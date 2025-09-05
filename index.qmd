@@ -1,0 +1,44 @@
+---
+title: "XiuYing Lan"
+---
+
+# About Me  
+
+Hello, and welcome to my page! My name is **XiuYing Lan**. I recently earned my **BBA in Marketing** at Baruch College, and I am now in my **first year of the MS in Marketing Analytics program**, also at Baruch.  
+
+My undergraduate studies introduced me to the world of marketing and strategy, while my graduate work is giving me the tools to analyze data and make informed business decisions. Together, these experiences are preparing me for a career where I can connect **creative marketing ideas with data-driven insights**.  
+
+*This site will grow as I continue my journey — check back soon for updates, projects, and more!*  
+
+---
+
+# Baruch Map  
+
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+
+if(!require("leaflet")){
+    options(repos=c(CRAN="https://cloud.r-project.org"))
+    install.packages("leaflet")
+    stopifnot(require("leaflet"))
+}
+
+baruch_longitude <- -73.98333
+baruch_latitude  <- +40.75028
+
+leaflet() |>
+  addTiles() |>
+  setView(baruch_longitude, baruch_latitude, zoom=17) |>
+  addPopups(baruch_longitude, baruch_latitude, 
+            "I am a Master's student at <b>Baruch College</b>!")
+```
+
+
+```{r}
+#| include: false
+1+1
+```
+--------------
+Last Updated: `r format(Sys.time(), "%A %m %d, %Y at %H:%M%p")`
