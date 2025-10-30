@@ -669,11 +669,12 @@ There’s a clear positive relationship between average household income and med
 
 **Plot 3.2**
 ```{r}
+#| code-fold: true
 
 #| fig.width: 9
 #| fig.height: 6
 #| fig.align: 'center'
-#| code-fold: true
+
 
 
 # Suppress package startup messages
@@ -766,11 +767,12 @@ Health care and social services employment grows roughly in proportion to total 
 
 **Plot 3.3**
 ```{r}
+#| code-fold: true
 
 #| fig.width: 9
 #| fig.height: 6
 #| fig.align: 'center'
-#| code-fold: true
+
 
 
 suppressPackageStartupMessages({
