@@ -1,0 +1,750 @@
+---
+title: "Mini-Project 03 - Visualizing and Maintaining the Green Canopy of NYC"
+author: XiuYing Lan
+---
+
+# Introduction
+New York City’s urban forest is a vital component of the city’s environment, public health, and community life. With more than a million of trees spanning over 30,000 acres of public parkland, maintaining and understanding the city’s green canopy is a significant undertaking for the Department of Parks and Recreation (DPR). In this mini-project, I explore the NYC TreeMap dataset to gain insights into the distribution, condition, species composition, and risk levels of trees across the city.
+
+The project involves programmatic data acquisition from NYC OpenData, data cleaning, integration of multiple sources, and spatial analysis using City Council district boundaries. Through descriptive statistics, comparative visualizations, and geospatial mapping, the project investigates patterns in tree density, invasive species prevalence, and maintenance priorities. These analyses provide a foundation for actionable proposals aimed at improving tree health, equity of green space access, and risk management across the city.
+
+---
+
+# Data Acquisition
+
+### Task 1: Download NYC City Council District Boundaries
+```{r,echo=TRUE, message=FALSE, warning=FALSE}
+#| code-fold: true 
+
+#| echo: false
+#| message: false
+#| warning: false
+
+
+library(sf)
+
+cc_url <- "https://services5.arcgis.com/GfwWNkhOj9bNBqoJ/arcgis/rest/services/NYC_City_Council_Districts/FeatureServer/0/query?where=1%3D1&outFields=*&f=geojson"
+CC <- sf::st_read(cc_url, quiet = TRUE)
+CC <- sf::st_transform(CC, crs = "WGS84")
+
+```
+
+
+
+```{r,echo=TRUE, message=FALSE, warning=FALSE}
+#| code-fold: true 
+
+#| echo: false
+#| message: false
+#| warning: false
+
+
+library(ggplot2)
+library(dplyr)
+library(sf)
+
+# Optional: simplify geometry for faster plotting
+CC_simp <- CC %>%
+  mutate(geometry = st_simplify(geometry, dTolerance = 5))
+
+# Plot NYC City Council district boundaries
+ggplot(CC_simp) +
+  geom_sf(fill = NA, color = "darkblue", size = 0.6) +  # no fill, just borders
+  labs(
+    title = "NYC City Council District Boundaries",
+    subtitle = "51 districts across the five boroughs",
+    x = "Longitude",
+    y = "Latitude"
+  ) +
+  theme_minimal(base_size = 14) +
+  theme(
+    plot.title = element_text(face = "bold", size = 16),
+    plot.subtitle = element_text(size = 12)
+  )
+```
+This map shows all 51 NYC City Council districts across the five boroughs. The districts in Manhattan and Brooklyn are smaller and more compact, reflecting dense populations, while districts in Queens and Staten Island are larger. The boundaries are drawn based on population, not just geography. This map helps visualize local governance areas and can be used to link other data, like tree locations, to specific districts.
+
+---
+
+
+### Task 2: Download Tree Points
+
+- **Download and compile NYC tree points into a single spatial dataset.**
+```{r,echo=TRUE, message=FALSE, warning=FALSE}
+#| code-fold: true 
+
+#| echo: false
+#| message: false
+#| warning: false
+
+
+library(httr2)
+library(sf)
+library(dplyr)
+
+# Function to download NYC tree points 
+download_tree_points <- function(dest_dir      = "data/mp03",
+                                 base_url      = "https://data.cityofnewyork.us/resource/hn5i-inap.geojson",
+                                 page_limit    = 50000,     # rows per API call
+                                 max_pages     = Inf,       # Inf = download all pages
+                                 app_token     = NULL,      # optional: Socrata app token
+                                 simplify      = FALSE,     # simplify geometry if needed
+                                 sample_n      = NULL,      # optional: sample rows for testing
+                                 crs_out       = "WGS84") {
+
+  ## Ensure directory exists
+  if (!dir.exists(dest_dir)) dir.create(dest_dir, recursive = TRUE)
+
+  page_index <- 1
+  keep_going <- TRUE
+  saved_files <- character(0)
+
+  ## Download batches
+  while (keep_going && page_index <= max_pages) {
+    offset_val <- (page_index - 1L) * as.integer(page_limit)
+    page_file <- file.path(dest_dir,
+                           paste0("treepoints_page_", sprintf("%05d", page_index), ".geojson"))
+
+    if (!file.exists(page_file)) {
+      req <- request(base_url) |>
+        req_url_query(`$limit`  = as.integer(page_limit),
+                      `$offset` = as.integer(offset_val)) |>
+        req_user_agent("STA9750-mp03-httr2/1.0")
+      if (!is.null(app_token)) req <- req_headers(req, "X-App-Token" = app_token)
+
+      resp <- req_perform(req)
+      raw  <- resp_body_raw(resp)
+
+      writeBin(raw, page_file)
+    }
+
+    ## Read GeoJSON
+    this_sf <- tryCatch(
+      st_read(page_file, quiet = TRUE),
+      error = function(e) {
+        message("Failed to read page file: ", page_file, " — removing it.")
+        unlink(page_file)
+        stop(e)
+      }
+    )
+
+    n_rows <- nrow(this_sf)
+    saved_files <- c(saved_files, page_file)
+    message("Saved page ", page_index, " with ", n_rows, " rows.")
+
+    if (n_rows < page_limit) {
+      keep_going <- FALSE
+    } else {
+      page_index <- page_index + 1
+    }
+  }
+
+# Combine all saved pages
+  geojson_files <- list.files(dest_dir, pattern = "^treepoints_page_\\d+\\.geojson$", full.names = TRUE)
+  if (length(geojson_files) == 0) stop("No downloaded GeoJSON files found in ", dest_dir)
+
+  sf_list <- lapply(geojson_files, st_read, quiet = TRUE)
+  all_points <- bind_rows(sf_list)
+
+  ## Transform CRS
+  all_points <- st_transform(all_points, crs = crs_out)
+
+  ## Optional: sample for testing
+  if (!is.null(sample_n) && sample_n < nrow(all_points)) {
+    set.seed(9750)
+    all_points <- all_points[sample.int(nrow(all_points), sample_n), ]
+  }
+
+  ## Optional: simplify geometry
+  if (simplify) all_points$geometry <- st_simplify(all_points$geometry, dTolerance = 1)
+
+  message("NYC Forestry Tree Points loaded: ", nrow(all_points), " rows.")
+  return(all_points)
+}
+
+# Run the function 
+# Download full dataset (or use sample_n = 10000 for testing)
+trees_full <- download_tree_points(dest_dir = "data/mp03", page_limit = 50000, sample_n = NULL)
+
+```
+
+
+---
+
+
+# Data Integration and Initial Exploration
+
+
+### Task 3: Mapping NYC Trees
+
+The graph displays the locations of 1,094,587 trees across New York City overlaid on City Council district boundaries. Each point represents a single tree, illustrating the distribution of trees throughout the city. Variations in tree density across different neighborhoods are clearly visible, offering a comprehensive visual overview of NYC’s urban forest.
+```{r}
+#| code-fold: true 
+
+# Install if not already installed
+if(!require(leaflet)) install.packages("leaflet", repos = "https://cloud.r-project.org")
+library(leaflet)
+library(sf)
+library(dplyr)
+
+# Optional: sample points to speed up interactive map
+set.seed(9750)
+trees_sample <- trees_full %>% sample_n(20000)
+
+# Convert sf points to leaflet-friendly format
+trees_coords <- st_coordinates(trees_sample)
+trees_leaflet <- trees_sample %>% 
+  mutate(lon = trees_coords[,1],
+         lat = trees_coords[,2])
+
+# Create interactive map
+leaflet() %>%
+  addProviderTiles(providers$CartoDB.Positron) %>%  # nice background
+  addPolygons(data = CC_simp, color = "darkblue", weight = 1, fill = FALSE,
+              label = ~CounDist) %>%  # district boundaries with labels
+  addCircleMarkers(data = trees_leaflet,
+                   lng = ~lon, lat = ~lat,
+                   radius = 2,
+                   color = "darkgreen",
+                   stroke = FALSE,
+                   fillOpacity = 0.5,
+                   popup = ~paste("Species:", genusspecies, "<br>",
+                                  "Condition:", tpcondition)) %>%
+  addLegend(position = "bottomright", 
+            colors = "darkgreen", 
+            labels = "Tree Points",
+            title = "NYC Trees (sample)")
+```
+
+
+---
+
+
+### Task 4: District-Level Analysis of Tree Coverage
+
+```{r}
+#| code-fold: true 
+
+trees_in_district <- st_join(trees_full, CC_simp, join = st_intersects)
+```
+
+```{r}
+#| code-fold: true
+
+# Total tree count per district
+tree_counts <- trees_in_district %>%
+  st_drop_geometry() %>%
+  group_by(CounDist) %>%
+  summarise(total_trees = n(),
+            dead_trees = sum(tpcondition == "Dead", na.rm = TRUE),
+            .groups = "drop")
+
+# Top districts by tree count
+top_trees <- tree_counts %>% slice_max(total_trees, n = 5)
+
+# Top districts by tree density
+# Assume CC_simp has area in sq meters
+CC_simp$area_m2 <- st_area(CC_simp)
+tree_counts_density <- tree_counts %>%
+  left_join(CC_simp %>% st_drop_geometry() %>% select(CounDist, area_m2), by = "CounDist") %>%
+  mutate(density = total_trees / as.numeric(area_m2) * 10000)  # trees per 10,000 m2
+top_density <- tree_counts_density %>% slice_max(density, n = 5)
+
+# Top 10 districts by fraction of dead trees
+tree_counts <- tree_counts %>%
+  mutate(dead_fraction = dead_trees / total_trees)
+top_10_dead <- tree_counts %>% slice_max(dead_fraction, n = 10)
+
+# Top 10 species in Manhattan (CounDist 1:10)
+manhattan_species <- trees_in_district %>%
+  filter(as.numeric(CounDist) %in% 1:10) %>%
+  st_drop_geometry() %>%
+  group_by(genusspecies) %>%
+  summarise(count = n(), .groups = "drop") %>%
+  arrange(desc(count))
+```
+
+**Question 1: Which council district has the most trees?**
+```{r,echo=FALSE, message=FALSE, warning=FALSE}
+#| code-fold: true 
+
+# Install DT if not already installed
+if (!require("DT")) install.packages("DT", repos = "https://cloud.r-project.org")
+library(DT)
+
+# Show tree counts per district in an interactive table
+datatable(
+  tree_counts,
+  rownames = FALSE,
+  options = list(
+    pageLength = 5,
+    scrollX = TRUE
+  ),
+  caption = htmltools::tags$caption(
+    style = 'caption-side: top; text-align: left; font-weight: bold;',
+    'NYC Council Districts by Total Tree Count'
+  )
+)
+
+```
+**Answer:** Council district **`r top_trees$CounDist[1]`** has the highest number of trees in NYC based on a sample of 10,000 trees.
+
+
+---
+
+**Question 2: Which council district has the highest density of trees?**
+```{r}
+#| code-fold: true 
+
+# Install DT if needed
+if (!require("DT")) install.packages("DT", repos = "https://cloud.r-project.org")
+library(DT)
+
+# Show top 10 districts by tree density in an interactive table
+datatable(
+  top_density,
+  rownames = FALSE,
+  options = list(
+    pageLength = 5,
+    scrollX = TRUE
+  ),
+  caption = htmltools::tags$caption(
+    style = 'caption-side: top; text-align: left; font-weight: bold;',
+    'Top 10 NYC Council Districts by Tree Density'
+  )
+)
+```
+**Answer:** **`r top_density$CounDist[1]`** has the highest tree density among NYC council districts.
+
+
+---
+
+**Question 3: Which district has highest fraction of dead trees out of all trees?**
+```{r}
+#| code-fold: true 
+
+# Show top 10 districts by dead tree fraction as interactive table
+datatable(
+  top_10_dead,
+  rownames = FALSE,
+  options = list(
+    pageLength = 5,
+    scrollX = TRUE
+  ),
+  caption = htmltools::tags$caption(
+    style = 'caption-side: top; text-align: left; font-weight: bold;',
+    'Top 10 NYC Council Districts by Dead Tree Fraction'
+  )
+)
+
+
+```
+**Answer:** **`r top_10_dead$CounDist[1]`** has the highest fraction of dead trees among NYC council districts.
+
+
+---
+
+**Question 4: What is the most common tree species in Manhattan?**
+```{r}
+#| code-fold: true 
+
+# Install DT if needed
+if (!require("DT")) install.packages("DT", repos = "https://cloud.r-project.org")
+library(DT)
+
+# Show top 10 species in Manhattan
+datatable(
+  manhattan_species %>% slice_max(count, n = 10),
+  rownames = FALSE,
+  options = list(
+    pageLength = 5,
+    scrollX = TRUE
+  ),
+  caption = htmltools::tags$caption(
+    style = 'caption-side: top; text-align: left; font-weight: bold;',
+    'Top 10 Tree Species in Manhattan'
+  )
+)
+
+```
+**Answer:** **`r paste0(manhattan_species$genusspecies[1], " (", manhattan_species$count[1], " trees)** is the most common tree species in Manhattan.")`
+
+---
+
+**Question 5: What is the species of the tree closest to Baruch’s campus?**
+```{r}
+#| code-fold: true 
+
+library(ggplot2)
+library(sf)
+library(dplyr)
+
+# Define Baruch College location
+new_st_point <- function(lat, lon){
+  st_sfc(st_point(c(lon, lat)), crs = 4326)  # WGS84 CRS
+}
+baruch_point <- st_sfc(st_point(c(-73.9836, 40.7393)), crs = 4326)
+
+trees_manhattan <- trees_in_district %>% filter(as.numeric(CounDist) %in% 1:10)
+trees_with_distance <- trees_manhattan %>%
+  mutate(distance_to_baruch = st_distance(geometry, baruch_point))
+
+closest_tree <- trees_with_distance %>% slice_min(distance_to_baruch, n = 1)
+
+
+# Zoom window around Baruch College (~200m)
+xlim <- c(-73.985, -73.981)
+ylim <- c(40.738, 40.7405)
+
+# Plot
+ggplot() +
+  # Background district boundaries as thin gray lines
+  geom_sf(data = CC_simp %>% filter(CounDist %in% 1:10), fill = NA, color = "gray70", size = 0.3) +
+  
+  # All trees as green points
+  geom_sf(data = trees_with_distance, aes(color = "NYC Trees"), alpha = 0.3, size = 0.5) +
+  
+  # Baruch College as blue triangle
+  geom_sf(data = baruch_point, aes(color = "Baruch College"), size = 3, shape = 17) +
+  
+  # Closest tree as red point
+  geom_sf(data = closest_tree, aes(color = "Closest Tree"), size = 3) +
+  
+  # Define manual colors
+  scale_color_manual(
+    name = "Legend",
+    values = c(
+      "NYC Trees" = "darkgreen",
+      "Baruch College" = "blue",
+      "Closest Tree" = "red"
+    )
+  ) +
+  
+  coord_sf(xlim = xlim, ylim = ylim) +
+  theme_minimal() +
+  labs(
+    title = "Closest Tree to Baruch College",
+    subtitle = paste("Species of closest tree:", closest_tree$genusspecies),
+    caption = "Data source: NYC OpenData"
+  )
+
+```
+The graph zooms in on the area around Baruch College, highlighting the closest tree in red, which is a **Ginkgo biloba – maidenhair**, relative to the campus location marked by a blue triangle. It shows the spatial context of Manhattan trees in the surrounding district, providing a clear visual of proximity between the campus and this specific tree.
+
+
+---
+
+
+
+# Government Project Design
+
+```{r}
+#| code-fold: true
+
+library(stringr)
+
+# Invasive species that actually appear in your dataset
+invasive_species_patterns <- c(
+  "acer platanoides",   # Norway maple
+  "pyrus calleryana",   # Callery pear
+  "ailanthus",
+  "morus",
+  "catalpa",
+  "phellodendron"
+)
+
+# Citywide counts
+invasive_counts <- trees_full %>%
+  st_drop_geometry() %>%
+  mutate(genus_lower = tolower(genusspecies)) %>%
+  filter(str_detect(genus_lower, paste(invasive_species_patterns, collapse = "|"))) %>%
+  count(genusspecies, sort = TRUE)
+
+# District counts
+invasive_counts_district <- trees_in_district %>%
+  st_drop_geometry() %>%
+  mutate(genus_lower = tolower(genusspecies)) %>%
+  filter(str_detect(genus_lower, paste(invasive_species_patterns, collapse = "|"))) %>%
+  count(CounDist, name = "total_invasive")
+
+# Spatial subset
+invasive_trees_district <- trees_in_district %>%
+  mutate(genus_lower = tolower(genusspecies)) %>%
+  filter(str_detect(genus_lower, paste(invasive_species_patterns, collapse = "|")))
+
+# Poor or dead subset
+invasive_risk <- invasive_trees_district %>%
+  filter(tpcondition %in% c("Poor", "Dead"))
+```
+
+### Eliminating Invasive Tree Species in District 13
+
+#### Project Overview
+Invasive tree species pose a significant threat to the ecological health of New York City’s urban forest. Species such as Pyrus calleryana - Callery pear, Acer platanoides - Norway maple, Morus - mulberry, Not Green Leaf - Norway Maple, and Ailanthus altissima - tree of heaven spread aggressively, outcompeting native trees and reducing biodiversity.
+
+Objective: Identify, remove, and replace invasive trees in District 13 to improve habitat quality, tree health, and public safety.
+
+---
+
+#### Proposed Scope
+
+- Targeted removals: ~1,000 invasive trees across District 13.
+- Replacement plantings: ~5,000 native trees selected for ecological resilience.
+- Maintenance focus: Prioritize invasive trees in poor or dead condition based on recent NYC Parks risk assessments.
+
+---
+
+#### Quantitative Justification
+**1. Prevalence of invasive species:**
+
+- The top invasive species in NYC include Pyrus calleryana - Callery pear (65,257 trees), Acer platanoides - Norway maple (47,203 trees), Morus - mulberry (9,243 trees), Not Green Leaf - Norway Maple (6,013 trees), and Ailanthus altissima - tree of heaven (4,378 trees).
+```{r}
+#| code-fold: true
+
+library(ggplot2)
+library(dplyr)
+
+# Create display_name
+invasive_counts <- invasive_counts %>%
+  mutate(display_name = ifelse(
+    str_detect(genusspecies, regex("Acer platanoides.*Not Green Leaf", ignore_case = TRUE)),
+    "Not Green Leaf\nNorway Maple",   # add newline to break long name
+    genusspecies
+  ))
+
+# Top 5
+top5_invasive <- invasive_counts[1:5, ]
+
+# Plot
+ggplot(top5_invasive, aes(x = reorder(display_name, n), y = n)) +
+  geom_col(fill = "tomato", width = 0.6) +
+  geom_text(aes(label = n), hjust = -0.1, size = 4, color = "black") +
+  coord_flip() +
+  labs(
+    title = "Top Invasive Tree Species in NYC",
+    x = "Species",
+    y = "Number of Trees",
+    caption = "Data source: NYC OpenData"
+  ) +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.3))) +
+  theme_minimal(base_size = 14) +
+  theme(
+    axis.text.y = element_text(size = 12, lineheight = 0.9),  # increase line spacing
+    plot.title = element_text(face = "bold", size = 16),
+    plot.caption = element_text(size = 10, color = "gray40")
+  )
+
+```
+
+
+---
+
+
+
+**2. District-level priority**
+
+- Comparison bar chart shows that District 13 has the highest concentration of invasive trees in the area.
+```{r}
+#| code-fold: true 
+
+library(ggplot2)
+library(dplyr)
+library(stringr)
+library(scales)
+
+# Define invasive species (partial matches)
+invasive_species <- c("Morus", "Ailanthus", "Catalpa", "Phellodendron")
+
+# Count invasive trees by district
+invasive_counts_district <- trees_in_district %>%
+  st_drop_geometry() %>%
+  filter(str_detect(genusspecies, paste(invasive_species, collapse = "|"))) %>%
+  group_by(CounDist) %>%
+  summarise(total_invasive = n(), .groups = "drop")
+
+# Check for empty data
+if (nrow(invasive_counts_district) == 0) {
+  stop("No invasive trees were detected. Check species names in your dataset.")
+}
+
+# Top 7 districts
+top7_districts <- invasive_counts_district %>%
+  slice_max(total_invasive, n = 7) %>%
+  arrange(desc(total_invasive)) %>%
+  mutate(highlight = ifelse(CounDist == CounDist[1], "Top District", "Other Districts"))
+
+# Plot
+ggplot(top7_districts, aes(x = reorder(CounDist, -total_invasive),
+                           y = total_invasive,
+                           fill = highlight)) +
+  geom_col() +
+  geom_text(aes(label = total_invasive), vjust = -0.5, size = 4) + # label numbers
+  scale_fill_manual(values = c("Top District" = "tomato", "Other Districts" = "skyblue")) +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.2)), breaks = pretty_breaks(n = 8)) +
+  labs(
+    title = "Top NYC Districts by Invasive Tree Count",
+    subtitle = "Top district highlighted in red",
+    x = "City Council District",
+    y = "Number of Invasive Trees",
+    caption = "Data source: NYC OpenData"
+  ) +
+  theme_minimal(base_size = 14) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    legend.position = "none",
+    plot.title = element_text(face = "bold", size = 16)
+  )
+```
+
+
+
+---
+
+
+
+**3. Spatial distribution**
+
+- Invasive trees are distributed throughout District 13, with clusters in parks, streetscapes, and vacant lots.
+- Zoomed-in map highlights areas where removal efforts will have the most impact.
+
+```{r}
+#| code-fold: true
+
+library(ggplot2)
+library(dplyr)
+library(stringr)
+library(sf)
+
+# Filter for District 13 in the City Council shapefile
+CC_d13 <- CC_simp %>% filter(CounDist == 13)
+
+# Define top 5 invasive species
+top_invasive_species <- c(
+  "Pyrus calleryana", 
+  "Acer platanoides", 
+  "Morus", 
+  "Not Green Leaf - Norway Maple",
+  "Ailanthus altissima"
+)
+
+# Subset trees in District 13 for these top 5 invasive species
+invasive_d13 <- trees_in_district %>%
+  filter(CounDist == 13) %>%
+  filter(str_detect(genusspecies, paste(top_invasive_species, collapse = "|"))) %>%
+  mutate(species_short = case_when(
+    str_detect(genusspecies, "Pyrus calleryana") ~ "Pyrus calleryana",
+    str_detect(genusspecies, "Acer platanoides") ~ "Acer platanoides",
+    str_detect(genusspecies, "Morus") ~ "Morus",
+    str_detect(genusspecies, "Not Green Leaf - Norway Maple") ~ "Not Green Leaf - Norway Maple",
+    str_detect(genusspecies, "Ailanthus altissima") ~ "Ailanthus altissima"
+  ))
+
+# Plot map
+ggplot(CC_d13) +
+  geom_sf(fill = "lightgray", color = "gray70", size = 0.3) +
+  geom_sf(data = invasive_d13, aes(color = species_short), alpha = 0.7, size = 1) +
+  scale_color_manual(
+    values = c(
+      "Pyrus calleryana" = "red",
+      "Acer platanoides" = "orange",
+      "Morus" = "purple",
+      "Not Green Leaf - Norway Maple" = "blue",
+      "Ailanthus altissima" = "green"
+    ),
+    name = "Species"
+  ) +
+  labs(
+    title = "Spatial Distribution of Top Invasive Trees in District 13",
+    subtitle = "Clusters of top invasive species",
+    caption = "Data source: NYC OpenData"
+  ) +
+  theme_minimal(base_size = 14) +
+  theme(
+    plot.title = element_text(face = "bold", size = 16),
+    plot.subtitle = element_text(size = 12),
+    legend.position = "right"
+  )
+```
+
+
+---
+
+
+**4. Invasive Tree condition & risk**
+
+- Trees in poor or dead condition are high-risk for public safety and continued invasive spread.
+
+```{r,echo=TRUE, message=FALSE, warning=FALSE}
+#| code-fold: true
+
+library(ggplot2)
+library(dplyr)
+library(sf)
+library(viridis)
+library(stringr)
+
+# Filter for District 13
+CC_d13 <- CC_simp %>% filter(CounDist == 13)
+
+# Define top 5 invasive species
+top_invasive_species <- c(
+  "Pyrus calleryana", 
+  "Acer platanoides", 
+  "Morus", 
+  "Not Green Leaf - Norway Maple",
+  "Ailanthus altissima"
+)
+
+# Subset invasive trees in District 13
+invasive_d13 <- trees_in_district %>%
+  filter(CounDist == 13) %>%
+  filter(str_detect(genusspecies, paste(top_invasive_species, collapse = "|")))
+
+# Identify high-risk trees (Poor or Dead condition)
+invasive_risk_d13 <- invasive_d13 %>%
+  filter(tpcondition %in% c("Poor", "Dead")) %>%
+  mutate(species_short = case_when(
+    str_detect(genusspecies, "Pyrus calleryana") ~ "Pyrus calleryana",
+    str_detect(genusspecies, "Acer platanoides") ~ "Acer platanoides",
+    str_detect(genusspecies, "Morus") ~ "Morus",
+    str_detect(genusspecies, "Not Green Leaf - Norway Maple") ~ "Not Green Leaf - Norway Maple",
+    str_detect(genusspecies, "Ailanthus altissima") ~ "Ailanthus altissima"
+  ))
+
+# Plot map
+ggplot(CC_d13) +
+  geom_sf(fill = "lightgray", color = "gray70", size = 0.3) +
+  geom_sf(data = invasive_risk_d13, aes(color = tpcondition), size = 1.2, alpha = 0.7) +
+  scale_color_viridis(discrete = TRUE, option = "plasma", name = "Tree Condition") +
+  labs(
+    title = "High-Risk Invasive Trees in District 13, NYC",
+    subtitle = "Trees in Poor or Dead condition",
+  ) +
+  theme_minimal(base_size = 14) +
+  theme(
+    plot.title = element_text(face = "bold", size = 16),
+    plot.subtitle = element_text(size = 12),
+    legend.position = "right"
+  )
+```
+
+
+---
+
+
+#### Expected Outcomes
+- Reduced spread of invasive trees and protection of native species.
+- Improved public safety through the removal of dead or high-risk trees.
+- Increased awareness and engagement through community planting initiatives.
+- Long-term enhancement of urban biodiversity and ecosystem health.
+
+
+---
+
+# Conclusion
+This mini-project demonstrates how large-scale urban forestry data can be effectively used to inform decision-making and resource allocation. By integrating tree census data with spatial district boundaries and additional maintenance and risk datasets, the analysis reveals patterns in tree distribution, condition, species diversity, and potential safety concerns across NYC.
+
+The visualizations and summary statistics developed throughout the project provide clear, actionable insights for urban forest management. They highlight areas with high concentrations of invasive or unhealthy trees, opportunities for new plantings, and districts that could benefit from targeted maintenance programs. Overall, this project showcases the value of combining data acquisition, geospatial analysis, and visualization techniques to support the city’s ongoing efforts to maintain and enhance its green canopy for all residents.
+
+--- 
+
