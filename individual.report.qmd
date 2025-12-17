@@ -1,0 +1,1144 @@
+---
+title: "Individual Report: A Citywide Analysis of Traffic Volume and 311 Complaints in New York City"
+author: XiuYing Lan
+format:
+  html:
+    theme: [cosmo, custom.scss]
+    toc: true
+    toc-title: "On this page"
+    toc-location: left
+    sidebar:
+      style: floating
+      collapse-level: 2
+      background: light
+      alignment: left
+---
+
+
+
+# **1. Introduction & Motivation**
+
+Traffic congestion is a common part of daily life in New York City and affects how residents move through the city and experience their neighborhoods. Beyond slowing travel, traffic can impact quality of life through noise, air pollution, and stress. Understanding when traffic is most disruptive is an important first step in identifying its effects on residents.
+
+Resident concerns are captured through the 311 Service Requests system. These complaints provide insight into when city conditions, such as noise or street issues, significantly affect residents. While not every disruption is reported, 311 data serves as a useful proxy for perceived impacts on daily life.
+
+This project asks how traffic patterns in New York City in 2024 relate to different types of 311 complaints. To address this, it is first necessary to understand the timing of traffic and complaints at the citywide level, including which hours and days see simultaneous peaks and whether late night traffic leads to disproportionately higher complaints.
+
+Examining patterns by hour of day and day of week establishes a temporal baseline that supports later spatial analyses across boroughs, neighborhoods, and streets. Understanding these timing patterns provides valuable insight into when traffic most affects residents’ quality of life.
+
+
+---
+
+
+
+
+# **2. Data Sources and Provenance**
+
+This project draws on two public datasets from NYC Open Data to examine the relationship between traffic volume and resident reported disruptions. Each dataset captures a different aspect of urban life and together they provide complementary perspectives on traffic conditions and quality of life in New York City.
+
+### **2.1 NYC DOT Automated Traffic Volume Counts**
+
+Traffic data were obtained from the NYC Department of Transportation Automated Traffic Volume Counts dataset on NYC Open Data. The dataset provides hourly vehicle counts at monitored street locations, allowing detailed analysis of daily and weekly traffic patterns.
+
+A strength of this dataset is that it offers direct and objective measurements of traffic rather than relying on estimates, making it well suited for identifying temporal trends.
+
+The dataset has limitations. Counts are only available for selected streets, and monitoring periods vary by location. To address these issues, traffic data were aggregated at the citywide level to ensure meaningful and comparable temporal patterns.
+
+### **2.2 NYC 311 Service Requests**
+
+Data on resident complaints were obtained from the NYC 311 Service Requests dataset on NYC Open Data. The dataset includes individual complaints with timestamps and categories, covering a range of quality of life issues such as noise, air quality, and street conditions.
+
+A key strength of the 311 data is that it reflects resident-reported disruptions, providing insight into how traffic affects daily life and serving as a proxy for impacts not captured by traffic measurements alone.
+
+The dataset is subject to self reporting bias, as not all disruptions are reported and reporting may vary by time of day, neighborhood, or individual behavior. These factors should be considered when interpreting the relationship between traffic volume and complaint patterns.
+
+
+
+
+---
+
+
+
+# **3. Data Processing and Methodology**
+
+This section outlines the steps taken to prepare and analyze the data, providing justification for each choice and ensuring that the analysis is reproducible and aligned with SQ1.
+
+### **3.1 Data Acquisition**
+
+Both datasets were loaded directly from NYC Open Data. The analysis was limited to records from the year 2024 to focus on recent traffic and complaint patterns. The traffic dataset, sourced from the NYC Department of Transportation Automated Traffic Volume Counts, provides hourly vehicle counts at monitored street segments. The 311 dataset includes individual complaint records across all categories, representing resident-reported disruptions.
+
+#### I. Automated Traffic Volume Counts Dataset
+```{r,echo=TRUE, message=FALSE, warning=FALSE}
+#| code-fold: true 
+
+#| message: false
+#| warning: false
+#| code-fold: true 
+
+# TRAFFIC DATA - This downloads raw traffic data from the NYC Open Data API
+
+# traffic data 
+
+library(httr2)
+library(readr)
+library(dplyr)
+library(stringr)
+
+#-------------------------------------------------------------------
+# Config for Automated Traffic Volume Counts
+#-------------------------------------------------------------------
+base_url_traffic   <- "https://data.cityofnewyork.us/resource/7ym2-wayt.csv"
+
+batch_dir_traffic  <- "data/traffic_batch"   # folder for per-batch files
+batch_pattern_traffic <- "^nyc_traffic_counts_batch_(\\d+)\\.csv$"
+
+final_file_traffic <- "data/nyc_traffic_automated_counts_full.csv"
+
+batch_size_traffic <- 50000 
+
+# Force consistent column types to avoid bind_rows() issues across batches
+col_spec_traffic <- cols(.default = col_character())
+
+#-------------------------------------------------------------------
+# Helper: figure out where to resume (batch index + offset)
+#-------------------------------------------------------------------
+get_resume_state_traffic <- function() {
+  if (!dir.exists(batch_dir_traffic)) {
+    dir.create(batch_dir_traffic, recursive = TRUE)
+    return(list(next_batch_id = 1L, offset = 0L))
+  }
+  
+  existing_files <- list.files(
+    batch_dir_traffic,
+    pattern = batch_pattern_traffic,
+    full.names = FALSE
+  )
+  
+  if (length(existing_files) == 0) {
+    return(list(next_batch_id = 1L, offset = 0L))
+  }
+  
+  # Extract batch numbers from filenames
+  batch_nums <- str_match(existing_files, batch_pattern_traffic)[, 2]
+  batch_nums <- as.integer(batch_nums[!is.na(batch_nums)])
+  
+  max_batch <- max(batch_nums)
+  
+  # Each batch uses limit = batch_size_traffic and no overlap,
+  # so starting offset for the *next* batch is:
+  offset <- (max_batch) * batch_size_traffic
+  
+  list(next_batch_id = max_batch + 1L, offset = offset)
+}
+
+#-------------------------------------------------------------------
+# Download in batches with httr2, writing each batch to disk
+#-------------------------------------------------------------------
+download_traffic_batches <- function() {
+  resume  <- get_resume_state_traffic()
+  batch_id <- resume$next_batch_id
+  offset   <- resume$offset
+  
+  message(sprintf(
+    "Starting (or resuming) traffic download at batch %d, offset %d",
+    batch_id, offset
+  ))
+  
+  repeat {
+    message(sprintf("Traffic: requesting batch %d (offset = %d)...", batch_id, offset))
+    
+    # get data
+    req <- request(base_url_traffic) |>
+      req_url_query(
+        "$where"  = "yr = 2024",
+        "$limit"  = batch_size_traffic,
+        "$offset" = offset
+      )
+    
+    resp <- req |> req_perform()
+    
+    raw_csv <- resp |> resp_body_raw()
+    chunk   <- read_csv(raw_csv, col_types = col_spec_traffic, show_col_types = FALSE)
+    
+    if (nrow(chunk) == 0) {
+      message("No more rows returned; finished traffic download.")
+      break
+    }
+    
+    # Write this batch immediately to disk
+    out_path <- file.path(
+      batch_dir_traffic,
+      sprintf("nyc_traffic_counts_batch_%04d.csv", batch_id)
+    )
+    
+    write_csv(chunk, out_path)
+    message(sprintf("  Traffic: retrieved %d rows and wrote '%s'.", nrow(chunk), out_path))
+    
+    if (nrow(chunk) < batch_size_traffic) {
+      message("Traffic: last (partial) batch received; stopping.")
+      break
+    }
+    
+    offset   <- offset + batch_size_traffic
+    batch_id <- batch_id + 1L
+    
+    Sys.sleep(0.25)  # be polite to the API
+  }
+}
+
+#-------------------------------------------------------------------
+# Helper: load and combine all traffic batches; optionally write final file
+#-------------------------------------------------------------------
+load_all_traffic_batches <- function(write_final = FALSE) {
+  if (!dir.exists(batch_dir_traffic)) {
+    stop("Traffic batch directory does not exist: ", batch_dir_traffic)
+  }
+  
+  files <- list.files(
+    batch_dir_traffic,
+    pattern   = batch_pattern_traffic,
+    full.names = TRUE
+  )
+  
+  if (length(files) == 0) {
+    stop("No traffic batch files found in: ", batch_dir_traffic)
+  }
+  
+  message(sprintf("Loading %d traffic batch files...", length(files)))
+  
+  dfs <- lapply(files, function(f) {
+    read_csv(f, col_types = col_spec_traffic, show_col_types = FALSE)
+  })
+  
+  df <- bind_rows(dfs)
+  
+  if (write_final) {
+    dir.create(dirname(final_file_traffic), recursive = TRUE, showWarnings = FALSE)
+    write_csv(df, final_file_traffic)
+    message(sprintf("Wrote combined traffic data to '%s'.", final_file_traffic))
+  }
+  
+  df
+}
+
+#-------------------------------------------------------------------
+# Main: use final traffic file if present; otherwise build it
+#-------------------------------------------------------------------
+if (file.exists(final_file_traffic)) {
+  message(sprintf(
+    "Final traffic file '%s' exists. Loading for analysis...",
+    final_file_traffic
+  ))
+  traffic_counts <- read_csv(
+    final_file_traffic,
+    col_types = col_spec_traffic,
+    show_col_types = FALSE
+  )
+} else {
+  message(sprintf(
+    "Final traffic file '%s' not found. Ensuring batches are downloaded...",
+    final_file_traffic
+  ))
+  
+  # This will resume from whatever batches you already have
+  download_traffic_batches()
+  
+  # Load all batches, write final file, and return combined df
+  traffic_counts <- load_all_traffic_batches(write_final = TRUE)
+}
+
+# Now ready for analysis - REPLACED the str() call with a simple confirmation
+cat("Traffic data loaded successfully\n")
+```
+
+
+
+
+
+#### II. 311 Service Requests Dataset
+```{r,echo=TRUE, message=FALSE, warning=FALSE}
+#| code-fold: true 
+
+#| echo: true
+#| message: false
+#| warning: false
+
+# 311 DATA SETUP - This sets up parameters for downloading 311 complaint data
+
+library(httr2)
+library(readr)
+library(dplyr)
+library(stringr)
+
+base_url  <- "https://data.cityofnewyork.us/resource/erm2-nwe9.csv"
+batch_dir <- "data/311_batch"          # folder for per-batch files
+batch_pattern <- "^nyc_311_2024_batch_(\\d+)\\.csv$"
+
+cols <- c(
+  "unique_key",
+  "created_date",
+  "agency",
+  "complaint_type",
+  "descriptor",
+  "location_type",
+  "incident_zip",
+  "incident_address",
+  "street_name",
+  "cross_street_1",
+  "cross_street_2",
+  "intersection_street_1",
+  "intersection_street_2",
+  "address_type",
+  "city",
+  "landmark",
+  "borough",
+  "x_coordinate_state_plane",
+  "y_coordinate_state_plane",
+  "latitude",
+  "longitude",
+  "location"
+)
+
+where_2024 <- "created_date between '2024-01-01T00:00:00' and '2024-12-31T23:59:59'"
+batch_size <- 50000
+
+# Force consistent column types (all character to avoid bind_rows issues)
+col_spec <- cols(.default = col_character())
+
+#-------------------------------------------------------------------
+# Helper: figure out where to resume (batch index + offset)
+#-------------------------------------------------------------------
+get_resume_state <- function() {
+  if (!dir.exists(batch_dir)) {
+    dir.create(batch_dir, recursive = TRUE)
+    return(list(next_batch_id = 1L, offset = 0L))
+  }
+  
+  existing_files <- list.files(batch_dir, pattern = batch_pattern, full.names = FALSE)
+  
+  if (length(existing_files) == 0) {
+    return(list(next_batch_id = 1L, offset = 0L))
+  }
+  
+  # Extract batch numbers from filenames
+  batch_nums <- str_match(existing_files, batch_pattern)[, 2]
+  batch_nums <- as.integer(batch_nums[!is.na(batch_nums)])
+  
+  max_batch <- max(batch_nums)
+  
+  # Each batch uses limit = batch_size and no overlap,
+  # so starting offset for the *next* batch is:
+  offset <- (max_batch) * batch_size
+  
+  list(next_batch_id = max_batch + 1L, offset = offset)
+}
+
+#-------------------------------------------------------------------
+# Download in batches with httr2, writing each batch to disk
+#-------------------------------------------------------------------
+download_311_2024_batches <- function() {
+  resume <- get_resume_state()
+  batch_id <- resume$next_batch_id
+  offset   <- resume$offset
+  
+  message(sprintf("Starting (or resuming) at batch %d, offset %d", batch_id, offset))
+  
+  repeat {
+    message(sprintf("Requesting batch %d (offset = %d)...", batch_id, offset))
+    
+    req <- request(base_url) |>
+      req_url_query(
+        "$select" = paste(cols, collapse = ","),
+        "$where"  = where_2024,
+        "$limit"  = batch_size,
+        "$offset" = offset
+      )
+    
+    resp <- req |> req_perform()
+    
+    raw_csv <- resp |> resp_body_raw()
+    chunk   <- read_csv(raw_csv, col_types = col_spec, show_col_types = FALSE)
+    
+    if (nrow(chunk) == 0) {
+      message("No more rows returned; finished downloading.")
+      break
+    }
+    
+    # Write this batch immediately to disk
+    out_path <- file.path(batch_dir, sprintf("nyc_311_2024_batch_%04d.csv", batch_id))
+    write_csv(chunk, out_path)
+    message(sprintf("  Retrieved %d rows and wrote '%s'.", nrow(chunk), out_path))
+    
+    if (nrow(chunk) < batch_size) {
+      message("Last (partial) batch received; stopping.")
+      break
+    }
+    
+    offset   <- offset + batch_size
+    batch_id <- batch_id + 1L
+    
+    Sys.sleep(0.25)  # be polite to the API
+  }
+}
+
+```
+
+```{r,echo=TRUE, message=FALSE, warning=FALSE}
+#| code-fold: true 
+
+#| echo: true
+#| message: false
+#| warning: false
+
+# 311 DATA DOWNLOAD - This executes the actual download of 311 data
+
+# write and read final file 
+final_file <- "data/nyc_311_2024_full.csv" 
+
+load_all_311_2024_batches <- function(write_final = FALSE) {
+  if (!dir.exists(batch_dir)) {
+    stop("Batch directory does not exist: ", batch_dir)
+  }
+  
+  files <- list.files(batch_dir, pattern = batch_pattern, full.names = TRUE)
+  
+  if (length(files) == 0) {
+    stop("No batch files found in: ", batch_dir)
+  }
+  
+  message(sprintf("Loading %d batch files...", length(files)))
+  
+  dfs <- lapply(files, function(f) {
+    read_csv(f, col_types = col_spec, show_col_types = FALSE)
+  })
+  
+  df <- bind_rows(dfs)
+  
+  if (write_final) {
+    dir.create(dirname(final_file), recursive = TRUE, showWarnings = FALSE)
+    write_csv(df, final_file)
+    message(sprintf("Wrote combined data to '%s'.", final_file))
+  }
+  
+  df
+}
+
+#-------------------------------------------------------------------
+# use final combined file if present; otherwise build it
+#-------------------------------------------------------------------
+if (file.exists(final_file)) {
+  message(sprintf("Final file '%s' exists. Loading for analysis...", final_file))
+  data_311_2024 <- read_csv(final_file, col_types = col_spec, show_col_types = FALSE)
+} else {
+  message(sprintf("Final file '%s' not found. Ensuring batches are downloaded...", final_file))
+  
+  # This will resume from whatever batches we have
+  download_311_2024_batches()
+  
+  # Load all batches, write final file, and return combined df
+  data_311_2024 <- load_all_311_2024_batches(write_final = TRUE)
+}
+
+# Now ready for analysis - REPLACED with simple confirmation
+cat("311 data loaded successfully\n")
+```
+
+```{r,echo=TRUE, message=FALSE, warning=FALSE}
+#| code-fold: true 
+
+#Load 311 data to R
+library(readr)
+
+data_311_2024 <- read_csv(
+  "data/nyc_311_2024_full.csv",
+  col_types = cols(.default = col_character()),
+  show_col_types = FALSE
+)
+```
+
+
+### **3.2 Data Cleaning and Preparation**
+
+Data cleaning involved removing records with missing or invalid timestamps, standardizing time fields, and ensuring that all timestamps were consistent within the same time zone. The hourly structure of the traffic data was also verified to confirm compatibility with the aggregated 311 complaint data. Together, these steps help ensure that both datasets can be accurately analyzed using a consistent temporal scale.
+
+```{r,echo=TRUE, message=FALSE, warning=FALSE}
+#| code-fold: true 
+
+# TRAFFIC DATA CLEANING - This cleans and prepares raw traffic data
+
+library(lubridate)
+
+traffic_time <- traffic_counts %>%
+  mutate(
+    yr  = as.integer(yr),
+    m   = as.integer(m),
+    d   = as.integer(d),
+    hh  = as.integer(hh),
+    vol = as.numeric(vol),
+    date = make_date(yr, m, d),
+    wday = wday(date, label = TRUE),
+    hour = hh
+  ) %>%
+  filter(!is.na(hour), !is.na(vol))
+
+```
+
+```{r,echo=TRUE, message=FALSE, warning=FALSE}
+#| code-fold: true 
+
+# 311 DATA CLEANING - This cleans and prepares raw 311 complaint data
+
+data_311_time <- data_311_2024 %>%
+  mutate(
+    created_date = ymd_hms(created_date, tz = "UTC"),
+    date  = as.Date(created_date),
+    hour  = hour(created_date),
+    wday  = wday(created_date, label = TRUE),
+    month = month(created_date, label = TRUE)
+  ) %>%
+  filter(!is.na(hour))
+```
+
+### **3.3 Aggregation Strategy**
+
+Data were aggregated by hour of day and day of week. Average values for traffic volume and complaint counts were calculated instead of totals. Using averages helps account for uneven monitoring across locations and allows for more fair comparisons across different time periods. This aggregation approach makes it possible to examine overall temporal patterns and identify periods when traffic activity and complaint levels coincide.
+
+#### I. HOURLY TRAFFIC AGGREGATION
+```{r,echo=TRUE, message=FALSE, warning=FALSE}
+#| code-fold: true
+
+# HOURLY TRAFFIC AGGREGATION - This aggregates traffic data by hour
+
+traffic_hourly <- traffic_time %>%
+  group_by(hour) %>%
+  summarise(
+    avg_volume = mean(vol, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+traffic_hourly <- traffic_time %>%
+  group_by(hour) %>%
+  summarise(
+    avg_traffic = mean(vol, na.rm = TRUE),  # This creates avg_traffic
+    n_measurements = n(),
+    .groups = "drop"
+  )
+
+```
+
+#### II. HOURLY COMPLAINTS AGGREGATION
+```{r,echo=TRUE, message=FALSE, warning=FALSE}
+#| code-fold: true
+
+# HOURLY COMPLAINTS AGGREGATION - This aggregates 311 data by hour
+
+complaints_hourly <- data_311_time %>%
+  group_by(hour) %>%
+  summarise(
+    avg_complaints = n() / n_distinct(date),
+    .groups = "drop"
+  )
+```
+
+#### III. WEEKDAY AGGREGATION
+```{r,echo=TRUE, message=FALSE, warning=FALSE}
+#| code-fold: true
+
+# WEEKDAY AGGREGATION - This aggregates both datasets by day of week
+
+traffic_wday <- traffic_time %>%
+  group_by(wday) %>%
+  summarise(avg_volume = mean(vol, na.rm = TRUE), .groups = "drop")
+
+complaints_wday <- data_311_time %>%
+  group_by(wday) %>%
+  summarise(complaints = n(), .groups = "drop")
+```
+
+
+### **3.4 Defining Late-Night Disruption**
+
+Late-night traffic volume is substantially lower than daytime traffic, yet disruptions during this period may have a greater impact on residents. To address this, late night is defined as the period from 10 PM to 5 AM, and a complaints per vehicle measure is calculated. This metric captures the intensity of disruption rather than relying on raw complaint counts, which allows for more meaningful comparisons between daytime and late night periods. Measuring complaints relative to traffic volume establishes a useful baseline for understanding citywide temporal patterns and supports the interpretation of later spatial analyses at the borough, neighborhood, and street level.
+
+```{r,echo=TRUE, message=FALSE, warning=FALSE}
+#| code-fold: true
+
+# Step 1: Compute average complaints per hour (daily average)
+complaints_hourly <- data_311_time %>%
+  group_by(date, hour) %>%                    # daily counts per hour
+  summarise(hourly_complaints = n(), .groups = "drop") %>%
+  group_by(hour) %>%
+  summarise(avg_complaints = mean(hourly_complaints, na.rm = TRUE), .groups = "drop")
+
+# Step 2: Combine datasets and calculate complaint-to-traffic ratio
+combined_hourly <- complaints_hourly %>%
+  inner_join(traffic_hourly, by = "hour") %>%
+  mutate(
+    complaints_per_traffic = avg_complaints / avg_traffic * 1000,  # complaints per 1000 vehicles
+    time_of_day = case_when(
+      hour >= 22 | hour <= 5 ~ "late_night",  # DEFINES 10PM-5AM
+      hour >= 6 & hour <= 9 ~ "morning_peak",
+      hour >= 16 & hour <= 19 ~ "evening_peak",
+      TRUE ~ "off_peak"
+    )
+  )
+```
+
+
+
+---
+
+
+
+# **4. Temporal Analysis of Traffic and 311 Complaints**
+
+Analyzing temporal patterns in traffic and 311 complaints helps clarify when traffic has the greatest impact on residents’ quality of life. Establishing this citywide temporal baseline is important for interpreting more detailed spatial analyses at the borough, neighborhood, and street levels. By examining patterns by hour of day and day of week, it becomes possible to identify periods of peak disruption and better understand how perceived impacts vary throughout the day and across the week.
+
+### **4.1 Hourly Patterns**
+
+```{r,echo=TRUE, message=FALSE, warning=FALSE}
+#| code-fold: true 
+
+
+library(ggplot2)
+library(dplyr)
+library(lubridate)
+
+# Your calculation (likely correct for this data)
+traffic_hourly <- traffic_time %>%
+  group_by(hour) %>%
+  summarise(
+    avg_volume = mean(vol, na.rm = TRUE),
+    n_measurements = n(),
+    median_volume = median(vol, na.rm = TRUE),
+    sd_volume = sd(vol, na.rm = TRUE),
+    se_volume = sd_volume / sqrt(n_measurements),
+    .groups = "drop"
+  )
+
+# Find highest and lowest points
+highest <- traffic_hourly %>% 
+  slice(which.max(avg_volume)) %>%
+  mutate(label = paste0("Peak: ", hour, ":00\n", round(avg_volume, 0)))
+
+lowest <- traffic_hourly %>% 
+  slice(which.min(avg_volume)) %>%
+  mutate(label = paste0("Low: ", hour, ":00\n", round(avg_volume, 0)))
+
+extremes <- bind_rows(highest, lowest)
+
+# Create plot with your preferred line design
+ggplot(traffic_hourly, aes(x = hour, y = avg_volume)) +
+  # Confidence interval ribbon (your preferred style)
+  geom_ribbon(aes(ymin = avg_volume - 1.96 * se_volume, 
+                  ymax = avg_volume + 1.96 * se_volume),
+              fill = "steelblue", alpha = 0.2) +
+  # Main line (your preferred style)
+  geom_line(color = "steelblue", size = 1) +
+  # All points (your preferred style)
+  geom_point(color = "steelblue", size = 2) +
+  # Extreme points - colored differently
+  geom_point(data = extremes, 
+             aes(color = ifelse(avg_volume == max(avg_volume), "Peak", "Low")), 
+             size = 3.5) +
+  # Labels for extreme points with average counts
+  geom_text(data = extremes,
+            aes(label = label,
+                color = ifelse(avg_volume == max(avg_volume), "Peak", "Low")),
+            fontface = "bold",
+            size = 3.8,
+            vjust = ifelse(extremes$avg_volume == max(extremes$avg_volume), -1.2, 1.8),
+            hjust = 0.5,
+            show.legend = FALSE) +
+  # Custom color scale for extremes
+  scale_color_manual(values = c("Peak" = "darkred", "Low" = "darkgreen"),
+                     name = "Extreme Points") +
+  labs(
+    title = "Average Traffic Volume by Hour (2024)",
+    subtitle = paste("Peak:", highest$hour, ":00 | Low:", lowest$hour, ":00"),
+    x = "Hour of Day",
+    y = "Average Traffic Volume"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(face = "bold", size = 14, hjust = 0.5),
+    plot.subtitle = element_text(size = 11, hjust = 0.5, margin = margin(b = 10)),
+    axis.title = element_text(face = "plain", size = 12),
+    legend.position = "top",
+    legend.title = element_text(size = 10),
+    legend.text = element_text(size = 9)
+  ) +
+  scale_x_continuous(
+    breaks = seq(0, 23, by = 3),
+    labels = function(x) {
+      case_when(
+        x == 0 ~ "12 AM",
+        x < 12 ~ paste0(x, " AM"),
+        x == 12 ~ "12 PM",
+        TRUE ~ paste0(x - 12, " PM")
+      )
+    }
+  ) +
+  scale_y_continuous(labels = scales::comma)
+```
+```{r,echo=TRUE, message=FALSE, warning=FALSE}
+#| code-fold: true 
+
+
+library(ggplot2)
+library(dplyr)
+library(lubridate)
+
+# Calculate average complaints per hour with confidence intervals
+complaints_hourly <- data_311_time %>%
+  group_by(date, hour) %>%
+  summarise(hourly_complaints = n(), .groups = "drop") %>%
+  group_by(hour) %>%
+  summarise(
+    avg_complaints = mean(hourly_complaints, na.rm = TRUE),
+    n_days = n(),
+    median_complaints = median(hourly_complaints, na.rm = TRUE),
+    sd_complaints = sd(hourly_complaints, na.rm = TRUE),
+    se_complaints = sd_complaints / sqrt(n_days),
+    .groups = "drop"
+  )
+
+# Find highest and lowest points
+highest <- complaints_hourly %>% 
+  slice(which.max(avg_complaints)) %>%
+  mutate(label = paste0("Peak: ", hour, ":00\n", round(avg_complaints, 0)))
+
+lowest <- complaints_hourly %>% 
+  slice(which.min(avg_complaints)) %>%
+  mutate(label = paste0("Low: ", hour, ":00\n", round(avg_complaints, 0)))
+
+extremes <- bind_rows(highest, lowest)
+
+# Create plot with EXACT same design as traffic plot
+ggplot(complaints_hourly, aes(x = hour, y = avg_complaints)) +
+  # Confidence interval ribbon (EXACT same as traffic)
+  geom_ribbon(aes(ymin = avg_complaints - 1.96 * se_complaints, 
+                  ymax = avg_complaints + 1.96 * se_complaints),
+              fill = "steelblue", alpha = 0.2) +
+  # Main line (EXACT same as traffic)
+  geom_line(color = "steelblue", size = 1) +
+  # All points (EXACT same as traffic)
+  geom_point(color = "steelblue", size = 2) +
+  # Extreme points - colored differently (EXACT same as traffic)
+  geom_point(data = extremes, 
+             aes(color = ifelse(avg_complaints == max(avg_complaints), "Peak", "Low")), 
+             size = 3.5) +
+  # Labels for extreme points with average counts (EXACT same as traffic)
+  geom_text(data = extremes,
+            aes(label = label,
+                color = ifelse(avg_complaints == max(avg_complaints), "Peak", "Low")),
+            fontface = "bold",
+            size = 3.8,
+            vjust = ifelse(extremes$avg_complaints == max(extremes$avg_complaints), -1.2, 1.8),
+            hjust = 0.5,
+            show.legend = FALSE) +
+  # Custom color scale for extremes (EXACT same as traffic)
+  scale_color_manual(values = c("Peak" = "darkred", "Low" = "darkgreen"),
+                     name = "Extreme Points") +
+  labs(
+    title = "Average 311 Complaints per Hour (2024)",
+    subtitle = paste("Peak:", highest$hour, ":00 | Low:", lowest$hour, ":00"),
+    x = "Hour of Day",
+    y = "Average Complaints per Day"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(face = "bold", size = 14, hjust = 0.5),
+    plot.subtitle = element_text(size = 11, hjust = 0.5, margin = margin(b = 10)),
+    axis.title = element_text(face = "plain", size = 12),
+    legend.position = "top",
+    legend.title = element_text(size = 10),
+    legend.text = element_text(size = 9)
+  ) +
+  scale_x_continuous(
+    breaks = seq(0, 23, by = 3),
+    labels = function(x) {
+      case_when(
+        x == 0 ~ "12 AM",
+        x < 12 ~ paste0(x, " AM"),
+        x == 12 ~ "12 PM",
+        TRUE ~ paste0(x - 12, " PM")
+      )
+    }
+  ) +
+  scale_y_continuous(labels = scales::comma)
+```
+Hourly patterns reveal that traffic peaks between 3 and 5 PM, with an average of around 141 vehicles per hour, reflecting typical late afternoon commuting behavior. In contrast, 311 complaints peak earlier in the day between 9 and 11 AM, with an average of around 570 complaints, suggesting that complaint activity is not driven solely by traffic congestion. Visualizing these patterns with a line plot highlights the mismatch between traffic volume and complaints, indicating that residents’ perceptions of disruption depend on factors beyond raw traffic volume.
+
+
+
+### **4.2 Day-of-Week Patterns**
+
+```{r,echo=TRUE, message=FALSE, warning=FALSE}
+#| code-fold: true 
+
+
+library(ggplot2)
+library(dplyr)
+
+# Compute average daily traffic per weekday
+traffic_wday_daily <- traffic_time %>%
+  group_by(date, wday) %>%
+  summarise(daily_volume = sum(vol, na.rm = TRUE), .groups = "drop") %>%
+  group_by(wday) %>%
+  summarise(avg_daily_volume = mean(daily_volume, na.rm = TRUE), .groups = "drop")
+
+# Plot
+ggplot(traffic_wday_daily, aes(x = wday, y = avg_daily_volume)) +
+  geom_col(fill = "steelblue") +
+  geom_text(aes(label = round(avg_daily_volume, 0)), 
+            vjust = -0.5, color = "darkred", size = 3.5) +
+  labs(
+    title = "Average Traffic Volume by Day of Week (2024)",
+    x = "Day of Week",
+    y = "Average Daily Volume"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(face = "bold", size = 14),
+    axis.title = element_text(face = "plain", size = 12)
+  ) +
+  ylim(0, max(traffic_wday_daily$avg_daily_volume) * 1.1)  # Add space for labels
+```
+
+```{r,echo=TRUE, message=FALSE, warning=FALSE}
+#| code-fold: true 
+
+
+library(ggplot2)
+library(dplyr)
+
+# Step 1: Compute daily complaints per date and weekday
+complaints_wday_daily <- data_311_time %>%
+  group_by(date, wday) %>%
+  summarise(daily_complaints = n(), .groups = "drop")
+
+# Step 2: Average complaints per weekday
+complaints_wday <- complaints_wday_daily %>%
+  group_by(wday) %>%
+  summarise(avg_complaints = mean(daily_complaints, na.rm = TRUE), .groups = "drop")
+
+# Step 3: Plot without extremes
+ggplot(complaints_wday, aes(x = wday, y = avg_complaints)) +
+  geom_col(fill = "steelblue") +
+  geom_text(aes(label = round(avg_complaints, 0)), vjust = -0.5, color = "darkred", size = 3.5) +
+  labs(
+    title = "Average 311 Complaints by Day of Week (2024)",
+    x = "Day of Week",
+    y = "Average Complaints per Day"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(face = "bold", size = 14),
+    axis.title = element_text(face = "plain", size = 12)
+  ) +
+  ylim(0, max(complaints_wday$avg_complaints) * 1.1)  # Add some space for labels
+
+```
+
+Day-of-week analysis shows that traffic volumes are highest from Tuesday through Thursday, exceeding 40,000 vehicles per day. Complaints, however, peak on Monday with 10,237 complaints, roughly 2 to 18 percent higher than other weekdays. A bar plot of these patterns illustrates the temporal mismatch and emphasizes the importance of context in understanding when residents experience disruption.
+
+
+
+### **4.3 Late-Night Analysis**
+
+#### I. Complaint-to-Traffic Ratios by Time Period
+```{r,echo=TRUE, message=FALSE, warning=FALSE}
+#| code-fold: true 
+
+
+#| label: calculate-hourly-averages
+
+library(dplyr)
+library(tidyr)
+
+# 311 Complaints - hourly averages
+complaints_hourly <- data_311_time %>%
+  group_by(date, hour) %>%
+  summarise(hourly_complaints = n(), .groups = "drop") %>%
+  group_by(hour) %>%
+  summarise(
+    avg_complaints = mean(hourly_complaints, na.rm = TRUE),
+    n_days_complaints = n(),
+    .groups = "drop"
+  )
+
+# Traffic Volume - hourly averages  
+traffic_hourly <- traffic_time %>%
+  group_by(hour) %>%
+  summarise(
+    avg_traffic = mean(vol, na.rm = TRUE),
+    n_measurements = n(),
+    .groups = "drop"
+  )
+
+# Combine datasets and calculate complaint-to-traffic ratio
+combined_hourly <- complaints_hourly %>%
+  inner_join(traffic_hourly, by = "hour") %>%
+  mutate(
+    complaints_per_traffic = avg_complaints / avg_traffic * 1000,  # complaints per 1000 vehicles
+    time_of_day = case_when(
+      hour >= 22 | hour <= 5 ~ "late_night",  # 10PM-5AM
+      hour >= 6 & hour <= 9 ~ "morning_peak",
+      hour >= 16 & hour <= 19 ~ "evening_peak",
+      TRUE ~ "off_peak"
+    )
+  )
+```
+
+```{r,echo=TRUE, message=FALSE, warning=FALSE}
+#| code-fold: true 
+
+# First create ratio_comparison dataframe
+ratio_comparison <- combined_hourly %>%
+  group_by(time_of_day) %>%
+  summarise(
+    avg_complaint_ratio = mean(complaints_per_traffic, na.rm = TRUE),
+    median_complaint_ratio = median(complaints_per_traffic, na.rm = TRUE),
+    n_hours = n(),
+    .groups = "drop"
+  )
+
+# Now create the formatted table
+library(knitr)
+library(kableExtra)
+
+ratio_comparison_formatted <- ratio_comparison %>%
+  mutate(
+    `Time Period` = case_when(
+      time_of_day == "late_night" ~ "Late Night (10PM-5AM)",
+      time_of_day == "morning_peak" ~ "Morning Peak (6AM-9AM)",
+      time_of_day == "evening_peak" ~ "Evening Peak (4PM-7PM)",
+      time_of_day == "off_peak" ~ "Off-Peak",
+      TRUE ~ time_of_day
+    ),
+    `Avg Ratio` = round(avg_complaint_ratio, 1),
+    `Median Ratio` = round(median_complaint_ratio, 1),
+    `Hours` = n_hours
+  ) %>%
+  arrange(desc(`Avg Ratio`)) %>%
+  select(`Time Period`, `Avg Ratio`, `Median Ratio`, `Hours`)
+
+# Display the table
+kable(ratio_comparison_formatted, 
+      caption = "Complaint-to-Traffic Ratio by Time Period") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+
+
+The table shows a clear pattern in how complaint intensity changes across different time periods when compared to traffic volume. Late night hours have the highest complaint intensity, with 5,028 complaints per 1,000 vehicles. This measure is scaled to make it easier to understand by showing how many complaints occur for every thousand vehicles rather than for a single vehicle. This value is much higher than the off peak period, which averages 4,310 complaints per 1,000 vehicles.
+
+In contrast, the morning and evening peak periods have noticeably lower complaint intensity, with 3,580 and 3,381 complaints per 1,000 vehicles. Even though traffic volume is higher during these commute times, residents file fewer complaints per vehicle compared to late night and off peak hours. Overall, this suggests that complaint behavior is influenced by more than just traffic volume. Factors such as increased noise sensitivity during quieter hours or different expectations about what level of disturbance is acceptable likely play an important role.
+
+
+#### II. Within-Late-Night Variation in Complaint Intensity
+```{r,echo=TRUE, message=FALSE, warning=FALSE}
+#| code-fold: true 
+
+
+library(dplyr)
+library(knitr)
+library(kableExtra)
+
+# First, create late_night_analysis if it doesn't exist
+# Step 1: Calculate hourly data for both datasets
+complaints_hourly <- data_311_time %>%
+  group_by(date, hour) %>%
+  summarise(hourly_complaints = n(), .groups = "drop") %>%
+  group_by(hour) %>%
+  summarise(
+    avg_complaints = mean(hourly_complaints, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+traffic_hourly <- traffic_time %>%
+  group_by(hour) %>%
+  summarise(
+    avg_traffic = mean(vol, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# Step 2: Combine and calculate ratios
+combined_hourly <- complaints_hourly %>%
+  inner_join(traffic_hourly, by = "hour") %>%
+  mutate(
+    complaints_per_traffic = avg_complaints / avg_traffic * 1000,
+    time_of_day = case_when(
+      hour >= 22 | hour <= 5 ~ "late_night",
+      hour >= 6 & hour <= 9 ~ "morning_peak",
+      hour >= 16 & hour <= 19 ~ "evening_peak",
+      TRUE ~ "off_peak"
+    )
+  )
+
+# Step 3: Create late_night_analysis
+late_night_analysis <- combined_hourly %>%
+  filter(time_of_day == "late_night") %>%
+  mutate(
+    z_score_all = scale(complaints_per_traffic)[,1],
+    ratio_vs_overall = complaints_per_traffic / mean(combined_hourly$complaints_per_traffic, na.rm = TRUE)
+  ) %>%
+  arrange(desc(z_score_all))
+
+# Now create the table
+late_night_table <- late_night_analysis %>%
+  mutate(
+    Hour = paste0(hour, ":00"),
+    `Avg Complaints` = round(avg_complaints, 1),
+    `Avg Traffic` = round(avg_traffic, 1),
+    `Complaints per 1000 Vehicles` = round(complaints_per_traffic, 1),
+    `Z-Score` = round(z_score_all, 2),
+    `Ratio vs Overall` = round(ratio_vs_overall, 2)
+  ) %>%
+  select(Hour, `Avg Complaints`, `Avg Traffic`, 
+         `Complaints per 1000 Vehicles`, `Z-Score`, `Ratio vs Overall`) %>%
+  arrange(desc(`Complaints per 1000 Vehicles`))
+
+# Display the table
+kable(late_night_table,
+      caption = "Late-Night Hour Analysis (10PM-5AM)") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+This table shows how complaint intensity changes within late night hours and highlights that the strongest sensitivity happens in the earliest overnight period. The 12:00 AM and 1:00 AM hours have the highest complaint to traffic ratios, both above 6,100 complaints per 1,000 vehicles. Their Z scores are 0.81, which means these hours are about 0.8 standard deviations higher than the overall 24 hour average.
+
+Complaint intensity stays relatively high from 2 AM to 3 AM but drops quickly as the morning gets closer. By 5:00 AM, the ratio falls to 2,396 complaints per 1,000 vehicles, which is less than half of the late night peak and only 0.56 times the overall average. This pattern suggests that resident sensitivity is not consistently high throughout the entire night. Instead, complaints are concentrated during the core overnight hours when expectations for quiet are strongest, while the pre dawn hour looks more similar to daytime patterns even though it is still considered late night.
+
+
+
+#### III. Hourly Complaint Intensity Relative to Traffic Volume
+```{r,echo=TRUE, message=FALSE, warning=FALSE}
+#| code-fold: true 
+
+#| label: ratio-visualization
+#| fig-height: 6
+#| fig-width: 10
+
+# First, calculate the ratios needed
+# Calculate late_night average ratio
+late_night_ratio <- combined_hourly %>%
+  filter(time_of_day == "late_night") %>%
+  summarise(avg = mean(complaints_per_traffic, na.rm = TRUE)) %>%
+  pull(avg)
+
+# Calculate daytime average ratio (non-late-night)
+daytime_ratio <- combined_hourly %>%
+  filter(time_of_day != "late_night") %>%
+  summarise(avg = mean(complaints_per_traffic, na.rm = TRUE)) %>%
+  pull(avg)
+
+# Calculate ratio difference
+ratio_difference <- late_night_ratio / daytime_ratio
+
+# Create the plot WITHOUT bar labels
+ggplot(combined_hourly, aes(x = hour, y = complaints_per_traffic)) +
+  geom_col(aes(fill = time_of_day), width = 0.8) +
+  
+  # Add the overall average red line
+  geom_hline(yintercept = mean(combined_hourly$complaints_per_traffic, na.rm = TRUE), 
+             color = "red", linetype = "dashed", size = 1) +
+  
+  # Clean color scheme
+  scale_fill_manual(
+    values = c(
+      "late_night" = "#4A6FA5",      # Dark blue for late night
+      "morning_peak" = "#FFA726",    # Orange for morning peak
+      "evening_peak" = "#FF7043",    # Deep orange for evening peak
+      "off_peak" = "#81C784"         # Green for off-peak
+    ),
+    name = "Time Period:"
+  ) +
+  
+  # Adjust y-axis to show the full range properly
+  scale_y_continuous(
+    limits = c(0, max(combined_hourly$complaints_per_traffic) * 1.1),
+    breaks = seq(0, 7000, by = 1000),  # Adjusted based on your max ~6125
+    labels = scales::comma_format()  # Format with commas for thousands
+  ) +
+  
+  labs(
+    title = "Complaint Intensity Relative to Traffic Volume by Hour",
+    subtitle = paste("Late-night complaints per vehicle are", round(ratio_difference, 2), 
+                    "times higher than daytime average\nRed line = overall average ratio"),
+    x = "Hour of Day",
+    y = "Complaints per 1000 Vehicles",
+    caption = "Data: NYC 311 & DOT Traffic Counts, 2024"
+  ) +
+  
+  theme_minimal(base_size = 13) +
+  theme(
+    plot.title = element_text(face = "bold", size = 16),
+    plot.subtitle = element_text(color = "gray40", size = 11),
+    legend.position = "top",
+    plot.caption = element_text(color = "gray50", size = 9),
+    panel.grid.minor = element_blank()
+  ) +
+  
+  scale_x_continuous(
+    breaks = seq(0, 23, by = 3),
+    labels = function(x) paste0(x, ":00")
+  )
+```
+  
+  
+
+The visualization supports the idea that late night traffic is linked to a much higher level of resident complaints compared to daytime hours. The graph shows a clear spike in complaint intensity during overnight hours, especially at midnight and 1:00 AM, where complaints exceed 6,100 per 1,000 vehicles. These values are well above the overall average line shown in red. Even though traffic volume is low during these hours, as seen in earlier traffic patterns, the complaint to traffic ratio is at its highest, pointing to increased resident sensitivity.
+
+This uneven relationship is summarized by the 1.29 times multiplier shown in the subtitle, meaning that late night hours generate almost one third more complaints per vehicle than the daytime average. This pattern appears consistently across most late night hours from 10:00 PM to 4:00 AM, with the exception of 5:00 AM, which shows complaint levels closer to daytime conditions. Overall, the data clearly answer our question by showing that late night traffic does lead to disproportionately higher complaint levels. This suggests that factors beyond traffic volume, such as expectations for quiet during nighttime hours, play a key role in shaping resident reporting behavior when fewer vehicles are on the road.
+
+
+
+
+---
+
+
+
+
+# **6. Connection to Overarching Question & Other SQs**
+
+SQ1 establishes the temporal foundation for understanding the spatial patterns explored in the rest of the analysis. By identifying when traffic and 311 complaints peak and showing that these peaks do not align, this section provides context for why traffic related complaints cluster across New York City.
+
+SQ1 supports later analyses in several ways. The finding that late night traffic generates about 1.29 times more complaints than daytime informs the borough level analysis in SQ2. The daily pattern of complaint sensitivity helps explain differences between residential and commercial areas in SQ3. The temporal baseline also guides street type and hotspot analyses in SQ4 through SQ6 by separating complaints driven by volume from those driven by heightened sensitivity at specific times.
+
+Overall, SQ1 shows that complaint patterns cannot be fully understood through spatial analysis alone. Understanding when residents are most affected provides essential context for interpreting where and why traffic impacts quality of life across New York City.
+
+
+
+
+---
+
+
+
+# **7. Limitations & Future Work**
+
+### 7.1 Limitations
+
+Several limitations should be considered when interpreting these results. First, traffic data come from fixed sensors that do not cover the entire street network, so some road types or neighborhoods may be underrepresented. Second, 311 complaints reflect when and how residents choose to report issues rather than actual disturbance levels, and reporting behavior can vary by awareness, tolerance, demographics, neighborhood, or time of day. Third, citywide aggregation in SQ1 may mask local differences, as patterns can vary across neighborhoods. Finally, the complaint to traffic ratio treats all complaints as equally important, even though their severity and impact may differ.
+
+### 7.2 Future Extensions
+
+Building on the temporal baseline, future work could expand these findings in several ways. One approach is to calculate late night complaint to traffic ratios at the neighborhood level to see if heightened nighttime sensitivity is citywide or concentrated in specific areas.
+
+Another extension is to analyze complaint types separately. Examining noise, air quality, and blocked driveway complaints by time of day could show that different concerns peak at different hours. Future research could also track how complaints change after policies such as quiet hours, traffic calming measures, or targeted enforcement.
+
+Finally, combining traffic and complaint data with additional sources, such as noise measurements, air quality sensors, or resident surveys, could clarify what drives higher late night complaint ratios and support more targeted policies to address traffic related impacts on quality of life.
+
+
+
+
+---
+
+
+
+
+# **8. Conclusion**
+
+This analysis shows that traffic volume alone does not explain resident reported disruption in New York City. Timing is important. Citywide, 311 complaints peak between 9 AM and 11 AM, while traffic peaks from 3 PM to 5 PM, creating a clear temporal mismatch. Late night traffic, however, generates about 1.29 times more complaints per vehicle than daytime periods, with the strongest sensitivity from 12 AM to 1 AM, exceeding 6,100 complaints per 1,000 vehicles.
+
+These findings indicate that resident sensitivity follows its own daily pattern, strongest during hours when expectations for quiet are highest. The temporal baseline helps explain where and why traffic affects quality of life and highlights that urban policy should consider not just traffic volume, but also when traffic occurs and how it aligns with resident expectations.
