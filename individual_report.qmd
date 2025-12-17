@@ -1100,7 +1100,7 @@ This uneven relationship is summarized by the 1.29 times multiplier shown in the
 
 
 
-# **6. Connection to Overarching Question & Other SQs**
+# **5. Connection to Overarching Question & Other SQs**
 
 SQ1 establishes the temporal foundation for understanding the spatial patterns explored in the rest of the analysis. By identifying when traffic and 311 complaints peak and showing that these peaks do not align, this section provides context for why traffic related complaints cluster across New York City.
 
@@ -1115,13 +1115,13 @@ Overall, SQ1 shows that complaint patterns cannot be fully understood through sp
 
 
 
-# **7. Limitations & Future Work**
+# **6. Limitations & Future Work**
 
-### 7.1 Limitations
+### 6.1 Limitations
 
 Several limitations should be considered when interpreting these results. First, traffic data come from fixed sensors that do not cover the entire street network, so some road types or neighborhoods may be underrepresented. Second, 311 complaints reflect when and how residents choose to report issues rather than actual disturbance levels, and reporting behavior can vary by awareness, tolerance, demographics, neighborhood, or time of day. Third, citywide aggregation in SQ1 may mask local differences, as patterns can vary across neighborhoods. Finally, the complaint to traffic ratio treats all complaints as equally important, even though their severity and impact may differ.
 
-### 7.2 Future Extensions
+### 6.2 Future Extensions
 
 Building on the temporal baseline, future work could expand these findings in several ways. One approach is to calculate late night complaint to traffic ratios at the neighborhood level to see if heightened nighttime sensitivity is citywide or concentrated in specific areas.
 
@@ -1137,7 +1137,7 @@ Finally, combining traffic and complaint data with additional sources, such as n
 
 
 
-# **8. Conclusion**
+# **7. Conclusion**
 
 This analysis shows that traffic volume alone does not explain resident reported disruption in New York City. Timing is important. Citywide, 311 complaints peak between 9 AM and 11 AM, while traffic peaks from 3 PM to 5 PM, creating a clear temporal mismatch. Late night traffic, however, generates about 1.29 times more complaints per vehicle than daytime periods, with the strongest sensitivity from 12 AM to 1 AM, exceeding 6,100 complaints per 1,000 vehicles.
 
