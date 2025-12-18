@@ -1,0 +1,911 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.8.22">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+<meta name="author" content="Data Miners (Qian Lin, Selena Li, Wendy Fung-Wu, Xiuying Lan, Laert Xhumari, Michelle Nguyen)">
+<meta name="dcterms.date" content="2025-12-17">
+
+<title>Group Report: How Does Traffic Volume Affect Urban Life in New York City in 2024? – STA 9750 Submission Material</title>
+<style>
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
+  vertical-align: middle;
+}
+</style>
+
+
+<script src="site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="site_libs/quarto-nav/headroom.min.js"></script>
+<script src="site_libs/clipboard/clipboard.min.js"></script>
+<script src="site_libs/quarto-search/autocomplete.umd.js"></script>
+<script src="site_libs/quarto-search/fuse.min.js"></script>
+<script src="site_libs/quarto-search/quarto-search.js"></script>
+<meta name="quarto:offset" content="./">
+<script src="site_libs/quarto-html/quarto.js" type="module"></script>
+<script src="site_libs/quarto-html/tabsets/tabsets.js" type="module"></script>
+<script src="site_libs/quarto-html/axe/axe-check.js" type="module"></script>
+<script src="site_libs/quarto-html/popper.min.js"></script>
+<script src="site_libs/quarto-html/tippy.umd.min.js"></script>
+<script src="site_libs/quarto-html/anchor.min.js"></script>
+<link href="site_libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="site_libs/quarto-html/quarto-syntax-highlighting-cd7454b418030687c631a6a7286fbe16.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<script src="site_libs/bootstrap/bootstrap.min.js"></script>
+<link href="site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="site_libs/bootstrap/bootstrap-ba3bc9bba8ecc4a8b0ea0bc711e922a7.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<script id="quarto-search-options" type="application/json">{
+  "location": "navbar",
+  "copy-button": false,
+  "collapse-after": 3,
+  "panel-placement": "end",
+  "type": "overlay",
+  "limit": 50,
+  "keyboard-shortcut": [
+    "f",
+    "/",
+    "s"
+  ],
+  "show-item-context": false,
+  "language": {
+    "search-no-results-text": "No results",
+    "search-matching-documents-text": "matching documents",
+    "search-copy-link-title": "Copy link to search",
+    "search-hide-matches-text": "Hide additional matches",
+    "search-more-match-text": "more match in this document",
+    "search-more-matches-text": "more matches in this document",
+    "search-clear-button-title": "Clear",
+    "search-text-placeholder": "",
+    "search-detached-cancel-button-title": "Cancel",
+    "search-submit-button-title": "Submit",
+    "search-label": "Search"
+  }
+}</script>
+
+
+</head>
+
+<body class="floating nav-fixed quarto-light">
+
+<div id="quarto-search-results"></div>
+  <header id="quarto-header" class="headroom fixed-top">
+    <nav class="navbar navbar-expand-lg " data-bs-theme="dark">
+      <div class="navbar-container container-fluid">
+      <div class="navbar-brand-container mx-auto">
+    <a href="./index.html" class="navbar-brand navbar-brand-logo">
+    </a>
+    <a class="navbar-brand" href="./index.html">
+    <span class="navbar-title">STA 9750 Submission Material</span>
+    </a>
+  </div>
+        <div class="quarto-navbar-tools tools-end">
+</div>
+      </div> <!-- /container-fluid -->
+    </nav>
+</header>
+<!-- content -->
+<div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article page-navbar">
+<!-- sidebar -->
+  <nav id="quarto-sidebar" class="sidebar collapse collapse-horizontal quarto-sidebar-collapse-item sidebar-navigation floating overflow-auto">
+    <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">On this page</h2>
+   
+  <ul>
+  <li><a href="#introduction" id="toc-introduction" class="nav-link active" data-scroll-target="#introduction"><strong>Introduction</strong></a></li>
+  <li><a href="#sq1.-citywide-temporal-patterns" id="toc-sq1.-citywide-temporal-patterns" class="nav-link" data-scroll-target="#sq1.-citywide-temporal-patterns"><strong>SQ1. Citywide Temporal Patterns</strong></a>
+  <ul class="collapse">
+  <li><a href="#day-of-week-patterns" id="toc-day-of-week-patterns" class="nav-link" data-scroll-target="#day-of-week-patterns"><strong>1.1 Day-of-Week Patterns</strong></a></li>
+  <li><a href="#hourly-peak-patterns" id="toc-hourly-peak-patterns" class="nav-link" data-scroll-target="#hourly-peak-patterns"><strong>1.2 Hourly Peak Patterns</strong></a></li>
+  <li><a href="#late-night-disproportion" id="toc-late-night-disproportion" class="nav-link" data-scroll-target="#late-night-disproportion"><strong>1.3 Late-Night Disproportion</strong></a></li>
+  <li><a href="#sq1-summary" id="toc-sq1-summary" class="nav-link" data-scroll-target="#sq1-summary"><strong>1.4 SQ1 Summary</strong></a></li>
+  </ul></li>
+  <li><a href="#sq2.-traffic-volume-and-noise-complaints-across-boroughs" id="toc-sq2.-traffic-volume-and-noise-complaints-across-boroughs" class="nav-link" data-scroll-target="#sq2.-traffic-volume-and-noise-complaints-across-boroughs"><strong>SQ2. Traffic Volume and Noise Complaints Across Boroughs</strong></a>
+  <ul class="collapse">
+  <li><a href="#traffic-coverage-across-boroughs" id="toc-traffic-coverage-across-boroughs" class="nav-link" data-scroll-target="#traffic-coverage-across-boroughs"><strong>2.1 Traffic Coverage Across Boroughs</strong></a></li>
+  <li><a href="#borough-level-patterns" id="toc-borough-level-patterns" class="nav-link" data-scroll-target="#borough-level-patterns"><strong>2.2 Borough-Level Patterns</strong></a></li>
+  <li><a href="#statistical-analysis" id="toc-statistical-analysis" class="nav-link" data-scroll-target="#statistical-analysis"><strong>2.3 Statistical Analysis</strong></a></li>
+  <li><a href="#sq2-summary" id="toc-sq2-summary" class="nav-link" data-scroll-target="#sq2-summary"><strong>2.4 SQ2 Summary</strong></a></li>
+  </ul></li>
+  <li><a href="#sq3-high-traffic-streets-and-air-quality-complaints" id="toc-sq3-high-traffic-streets-and-air-quality-complaints" class="nav-link" data-scroll-target="#sq3-high-traffic-streets-and-air-quality-complaints"><strong>SQ3: High-Traffic Streets and Air Quality Complaints</strong></a>
+  <ul class="collapse">
+  <li><a href="#within-zip-comparisons" id="toc-within-zip-comparisons" class="nav-link" data-scroll-target="#within-zip-comparisons"><strong>3.1 Within-ZIP Comparisons</strong></a></li>
+  <li><a href="#complaint-concentration-in-high-volume-zip-codes" id="toc-complaint-concentration-in-high-volume-zip-codes" class="nav-link" data-scroll-target="#complaint-concentration-in-high-volume-zip-codes"><strong>3.2 Complaint Concentration in High-Volume ZIP Codes</strong></a></li>
+  <li><a href="#sq3-summary" id="toc-sq3-summary" class="nav-link" data-scroll-target="#sq3-summary"><strong>3.3 SQ3 Summary</strong></a></li>
+  </ul></li>
+  <li><a href="#sq4-traffic-intensity-and-street-damage-complaints" id="toc-sq4-traffic-intensity-and-street-damage-complaints" class="nav-link" data-scroll-target="#sq4-traffic-intensity-and-street-damage-complaints"><strong>SQ4: Traffic Intensity and Street Damage Complaints</strong></a>
+  <ul class="collapse">
+  <li><a href="#borough-level-patterns-1" id="toc-borough-level-patterns-1" class="nav-link" data-scroll-target="#borough-level-patterns-1"><strong>4.1 Borough-Level Patterns</strong></a></li>
+  <li><a href="#traffic-intensity-comparisons" id="toc-traffic-intensity-comparisons" class="nav-link" data-scroll-target="#traffic-intensity-comparisons"><strong>4.2 Traffic Intensity Comparisons</strong></a></li>
+  <li><a href="#sq4-summary" id="toc-sq4-summary" class="nav-link" data-scroll-target="#sq4-summary"><strong>4.3 SQ4 Summary</strong></a></li>
+  </ul></li>
+  <li><a href="#sq5-stability-of-traffic-and-complaint-relationships" id="toc-sq5-stability-of-traffic-and-complaint-relationships" class="nav-link" data-scroll-target="#sq5-stability-of-traffic-and-complaint-relationships"><strong>SQ5: Stability of Traffic and Complaint Relationships</strong></a>
+  <ul class="collapse">
+  <li><a href="#borough-level-patterns-2" id="toc-borough-level-patterns-2" class="nav-link" data-scroll-target="#borough-level-patterns-2"><strong>5.1 Borough-Level Patterns</strong></a></li>
+  <li><a href="#short-term-traffic-anomalies" id="toc-short-term-traffic-anomalies" class="nav-link" data-scroll-target="#short-term-traffic-anomalies"><strong>5.2 Short-Term Traffic Anomalies</strong></a></li>
+  <li><a href="#sq5-summary" id="toc-sq5-summary" class="nav-link" data-scroll-target="#sq5-summary"><strong>5.3 SQ5 Summary</strong></a></li>
+  </ul></li>
+  <li><a href="#sq6-spatial-and-temporal-hotspots-of-traffic-complaints" id="toc-sq6-spatial-and-temporal-hotspots-of-traffic-complaints" class="nav-link" data-scroll-target="#sq6-spatial-and-temporal-hotspots-of-traffic-complaints"><strong>SQ6: Spatial and Temporal Hotspots of Traffic Complaints</strong></a>
+  <ul class="collapse">
+  <li><a href="#complaint-counts-and-initial-observations" id="toc-complaint-counts-and-initial-observations" class="nav-link" data-scroll-target="#complaint-counts-and-initial-observations"><strong>6.1 Complaint Counts and Initial Observations</strong></a></li>
+  <li><a href="#spatial-hotspots" id="toc-spatial-hotspots" class="nav-link" data-scroll-target="#spatial-hotspots"><strong>6.2 Spatial Hotspots</strong></a></li>
+  <li><a href="#temporal-patterns" id="toc-temporal-patterns" class="nav-link" data-scroll-target="#temporal-patterns"><strong>6.3 Temporal Patterns</strong></a></li>
+  <li><a href="#sq6-summary" id="toc-sq6-summary" class="nav-link" data-scroll-target="#sq6-summary"><strong>6.4 SQ6 Summary</strong></a></li>
+  </ul></li>
+  <li><a href="#why-this-matters-and-whats-next" id="toc-why-this-matters-and-whats-next" class="nav-link" data-scroll-target="#why-this-matters-and-whats-next"><strong>Why This Matters and What’s Next</strong></a></li>
+  <li><a href="#conclusion" id="toc-conclusion" class="nav-link" data-scroll-target="#conclusion"><strong>Conclusion</strong></a></li>
+  </ul>
+</nav>
+</nav>
+<div id="quarto-sidebar-glass" class="quarto-sidebar-collapse-item" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item"></div>
+<!-- margin-sidebar -->
+    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar zindex-bottom">
+    </div>
+<!-- main -->
+<main class="content" id="quarto-document-content">
+
+<header id="title-block-header" class="quarto-title-block default">
+<div class="quarto-title">
+<h1 class="title">Group Report: How Does Traffic Volume Affect Urban Life in New York City in 2024?</h1>
+</div>
+
+
+
+<div class="quarto-title-meta">
+
+    <div>
+    <div class="quarto-title-meta-heading">Author</div>
+    <div class="quarto-title-meta-contents">
+             <p>Data Miners (Qian Lin, Selena Li, Wendy Fung-Wu, Xiuying Lan, Laert Xhumari, Michelle Nguyen) </p>
+          </div>
+  </div>
+    
+    <div>
+    <div class="quarto-title-meta-heading">Published</div>
+    <div class="quarto-title-meta-contents">
+      <p class="date">December 17, 2025</p>
+    </div>
+  </div>
+  
+    
+  </div>
+  
+
+
+</header>
+
+
+<section id="introduction" class="level1">
+<h1><strong>Introduction</strong></h1>
+<p>Traffic congestion is a common part of daily life in New York City and affects how residents experience their neighborhoods. Beyond causing delays, traffic contributes to noise, air pollution, and stress, influencing urban quality of life. This project examines how traffic volume affected life in 2024 by linking traffic patterns with resident-reported 311 complaints. The main question asks how traffic across the city relates to complaints about noise, air quality, and street conditions. Data from NYC Open Data were used, including Automated Traffic Volume Counts, which provide hourly vehicle counts at monitored streets, and 311 Service Requests, which capture resident complaints. Combining these datasets allows a data-driven view of how traffic aligns with perceived disruptions across the city.</p>
+</section>
+<section id="sq1.-citywide-temporal-patterns" class="level1">
+<h1><strong>SQ1. Citywide Temporal Patterns</strong></h1>
+<p>This question examines <strong>when traffic volume and 311 complaint activity peak citywide and whether late-night traffic generates more complaints than daytime traffic.</strong> Traffic counts and 311 complaints were aggregated by hour and day of week to identify periods when traffic most affects residents’ quality of life and highlight times for potential interventions.</p>
+<section id="day-of-week-patterns" class="level3">
+<h3 class="anchored" data-anchor-id="day-of-week-patterns"><strong>1.1 Day-of-Week Patterns</strong></h3>
+<p>Results for the week show that traffic volume peaks midweek, from Tuesday through Thursday, with average daily traffic exceeding 40,000 vehicles. In contrast, 311 complaints reach their highest level on Mondays, averaging 10,237 complaints per day, while other weekdays are approximately two to eighteen percent lower. This indicates a clear mismatch between traffic volume and complaint activity.</p>
+<div class="cell" data-layout-align="center">
+<div class="cell-output-display">
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><img src="traffic_by_weekday.png" class="img-fluid quarto-figure quarto-figure-center figure-img" style="width:90.0%" alt="Bar chart showing Monday has highest traffic, Sunday the lowest"></p>
+</figure>
+</div>
+</div>
+</div>
+<div class="cell" data-layout-align="center">
+<div class="cell-output-display">
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><img src="complaint_by_weekday.png" class="img-fluid quarto-figure quarto-figure-center figure-img" style="width:90.0%" alt="Bar chart showing complaints are highest on Friday, lowest on Tuesday"></p>
+</figure>
+</div>
+</div>
+</div>
+</section>
+<section id="hourly-peak-patterns" class="level3">
+<h3 class="anchored" data-anchor-id="hourly-peak-patterns"><strong>1.2 Hourly Peak Patterns</strong></h3>
+<p>Hourly patterns reveal that traffic peaks during the late afternoon between 3 PM and 5 PM at roughly 141 vehicles per hour, while complaints peak earlier in the day between 9 AM and 11 AM at around 570 complaints. This temporal mismatch suggests that resident complaints are not driven solely by peak traffic congestion, but are also influenced by daily routines, expectations, and sensitivity to disruption at different times of day.</p>
+<div class="cell" data-layout-align="center">
+<div class="cell-output-display">
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><img src="traffic_by_hour.png" class="img-fluid quarto-figure quarto-figure-center figure-img" style="width:90.0%" alt="Line graph showing traffic peaks at 8 AM and 6 PM, lowest at 3 AM"></p>
+</figure>
+</div>
+</div>
+</div>
+<div class="cell" data-layout-align="center">
+<div class="cell-output-display">
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><img src="complaint_hour.png" class="img-fluid quarto-figure quarto-figure-center figure-img" style="width:90.0%" alt="Line chart showing complaints peak at 10 PM (~600 complaints) and reach their lowest point at 4 AM (~100 complaints)"></p>
+</figure>
+</div>
+</div>
+</div>
+</section>
+<section id="late-night-disproportion" class="level3">
+<h3 class="anchored" data-anchor-id="late-night-disproportion"><strong>1.3 Late-Night Disproportion</strong></h3>
+<p>Late-night complaints per vehicle are 1.29 times higher than the daytime average, suggesting that residents are more sensitive to traffic disruptions during quieter nighttime hours. When background activity levels are lower, even relatively small amounts of traffic may be more noticeable and disruptive, leading to a higher rate of complaints per vehicle compared to daytime periods.</p>
+<div class="cell" data-layout-align="center">
+<div class="cell-output-display">
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><img src="late_night.png" class="img-fluid quarto-figure quarto-figure-center figure-img" style="width:90.0%" alt="Chart showing complaints per vehicle are 1.29x higher at night"></p>
+</figure>
+</div>
+</div>
+</div>
+</section>
+<section id="sq1-summary" class="level3">
+<h3 class="anchored" data-anchor-id="sq1-summary"><strong>1.4 SQ1 Summary</strong></h3>
+<p>These findings establish a citywide temporal baseline by identifying when traffic-related disruption is most likely to occur across New York City. This timing context is essential for interpreting the more detailed borough, neighborhood, and street-level analyses explored in subsequent specific questions, since it helps distinguish location-based effects from broader citywide patterns that vary by hour and day.</p>
+<hr>
+</section>
+</section>
+<section id="sq2.-traffic-volume-and-noise-complaints-across-boroughs" class="level1">
+<h1><strong>SQ2. Traffic Volume and Noise Complaints Across Boroughs</strong></h1>
+<p>This question examines <strong>whether higher traffic volumes lead to more noise complaints and whether this varies across NYC boroughs.</strong> Noise–Street/Sidewalk and Noise–Vehicle complaints were analyzed using 2024 traffic counts combined with 311 Service Requests, aggregated by borough and day and normalized per record, to assess how traffic and local context affect residents’ experiences.</p>
+<section id="traffic-coverage-across-boroughs" class="level3">
+<h3 class="anchored" data-anchor-id="traffic-coverage-across-boroughs"><strong>2.1 Traffic Coverage Across Boroughs</strong></h3>
+<p>Traffic coverage is uneven across boroughs, which limits the ability to generalize results. Brooklyn has the most recorded traffic-observed days at 133, covering much of the year, while the Bronx has only 69 days. This discrepancy should be considered when interpreting borough-level patterns.</p>
+<div class="cell" data-layout-align="center">
+<div class="cell-output-display">
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><img src="traffic_borough.png" class="img-fluid quarto-figure quarto-figure-center figure-img" style="width:90.0%" alt="Bar chart showing traffic volume across NYC boroughs, with Manhattan highest and Staten Island lowest"></p>
+</figure>
+</div>
+</div>
+</div>
+</section>
+<section id="borough-level-patterns" class="level3">
+<h3 class="anchored" data-anchor-id="borough-level-patterns"><strong>2.2 Borough-Level Patterns</strong></h3>
+<p>The relationship between traffic and noise complaints varies by borough. In the Bronx and Manhattan, higher traffic days often coincide with more complaints, suggesting a modest positive association. In Brooklyn and Queens, however, traffic intensity and noise complaints show little co-movement, indicating that other factors may influence complaints in these areas.</p>
+<div class="cell" data-layout-align="center">
+<div class="cell-output-display">
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><img src="borough_patterns.png" class="img-fluid quarto-figure quarto-figure-center figure-img" style="width:90.0%" alt="Comparative analysis showing traffic volume versus complaint frequency across NYC boroughs"></p>
+</figure>
+</div>
+</div>
+</div>
+</section>
+<section id="statistical-analysis" class="level3">
+<h3 class="anchored" data-anchor-id="statistical-analysis"><strong>2.3 Statistical Analysis</strong></h3>
+<p>A regression controlling for borough and day-of-week confirms that traffic alone is not a strong predictor of noise complaints at the borough-day level. The coefficient for traffic per record is close to zero, while borough effects are much larger. This suggests that local context, including street layout, density, and resident reporting behavior, plays a larger role in determining complaint levels.</p>
+<div class="cell" data-layout-align="center">
+<div class="cell-output-display">
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><img src="regression_effects.png" class="img-fluid quarto-figure quarto-figure-center figure-img" style="width:90.0%"></p>
+</figure>
+</div>
+</div>
+</div>
+</section>
+<section id="sq2-summary" class="level3">
+<h3 class="anchored" data-anchor-id="sq2-summary"><strong>2.4 SQ2 Summary</strong></h3>
+<p>Overall, higher traffic is sometimes linked to increased noise complaints, but the relationship is inconsistent across boroughs. Traffic volume alone does not fully explain the patterns of noise complaints, and the influence of local conditions and reporting behavior is substantial.</p>
+<hr>
+</section>
+</section>
+<section id="sq3-high-traffic-streets-and-air-quality-complaints" class="level1">
+<h1><strong>SQ3: High-Traffic Streets and Air Quality Complaints</strong></h1>
+<p>This question examines <strong>whether streets with consistently heavier traffic receive more air quality and idling complaints than lower-traffic streets within the same ZIP code.</strong> Using 2024 NYC DOT traffic counts and 311 complaints, street segments were classified as high- or low-traffic, and comparisons were made within each ZIP code to focus on local impacts and limit broader geographic or socioeconomic effects.</p>
+<section id="within-zip-comparisons" class="level3">
+<h3 class="anchored" data-anchor-id="within-zip-comparisons"><strong>3.1 Within-ZIP Comparisons</strong></h3>
+<p>High-traffic streets receive about 6.76 air quality and idling complaints on average, compared to 2.81 on low-traffic streets, roughly 2.4 times higher. This pattern is consistent across ZIP codes, showing that traffic intensity, not location, drives complaint levels.</p>
+<div class="cell" data-layout-align="center">
+<div class="cell-output-display">
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><img src="Iding_traffic.png" class="img-fluid figure-img" style="width:90.0%" alt="Bar chart: high-traffic streets average 6.76 complaints, low-traffic streets average 2.81 complaints"></p>
+<figcaption>Air Quality &amp; Idling Complaints by Traffic Volume (2024)</figcaption>
+</figure>
+</div>
+</div>
+</div>
+</section>
+<section id="complaint-concentration-in-high-volume-zip-codes" class="level3">
+<h3 class="anchored" data-anchor-id="complaint-concentration-in-high-volume-zip-codes"><strong>3.2 Complaint Concentration in High-Volume ZIP Codes</strong></h3>
+<p>In ZIP codes with the most complaints, air quality and idling issues are concentrated on high-traffic streets. In 1123, 87 percent of complaints come from high-traffic streets, 76 percent in 1115, and 28 percent in 1138. This shows residents near busy streets face a disproportionate share of traffic-related environmental burdens.</p>
+<div class="cell" data-layout-align="center">
+<div class="cell-output-display">
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><img src="lding_ZIPs.png" class="img-fluid quarto-figure quarto-figure-center figure-img" style="width:90.0%" alt="Bar chart for seven high-complaint ZIP codes showing the percentage of complaints from high-traffic streets, ranging from 28% to 87%"></p>
+</figure>
+</div>
+</div>
+</div>
+</section>
+<section id="sq3-summary" class="level3">
+<h3 class="anchored" data-anchor-id="sq3-summary"><strong>3.3 SQ3 Summary</strong></h3>
+<p>The results show a clear link between traffic intensity and environmental quality-of-life concerns. Streets with consistently higher traffic generate more air quality and idling complaints, especially in ZIP codes with the highest totals. Residents near heavily trafficked streets face greater environmental burdens, highlighting the importance of considering local traffic patterns when evaluating urban quality of life.</p>
+<hr>
+</section>
+</section>
+<section id="sq4-traffic-intensity-and-street-damage-complaints" class="level1">
+<h1><strong>SQ4: Traffic Intensity and Street Damage Complaints</strong></h1>
+<p>This question examines <strong>whether heavier traffic predicts more street-condition complaints after accounting for road type and segment length.</strong> Street damage affects residents’ mobility and safety. Using 2024 NYC DOT traffic counts and 311 complaints on potholes, street conditions, and sidewalks, the analysis assesses whether higher traffic levels correspond to more complaints, starting with a citywide borough comparison.</p>
+<section id="borough-level-patterns-1" class="level3">
+<h3 class="anchored" data-anchor-id="borough-level-patterns-1"><strong>4.1 Borough-Level Patterns</strong></h3>
+<p>Manhattan and Brooklyn report the most street-damage complaints, about 20,000 and 15,000 respectively, while Staten Island has the fewest. This pattern mirrors traffic volume, with Queens and the Bronx showing intermediate levels. Although not proof of causation, the trend indicates that higher traffic intensity is linked to greater infrastructure stress.</p>
+<div class="cell" data-layout-align="center">
+<div class="cell-output-display">
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><img src="street_traffic.png" class="img-fluid quarto-figure quarto-figure-center figure-img" style="width:85.0%" alt="Bar chart showing street-damage complaints by borough: Manhattan highest (~20,000), followed by Brooklyn, Queens, Bronx, and Staten Island lowest."></p>
+</figure>
+</div>
+</div>
+</div>
+</section>
+<section id="traffic-intensity-comparisons" class="level3">
+<h3 class="anchored" data-anchor-id="traffic-intensity-comparisons"><strong>4.2 Traffic Intensity Comparisons</strong></h3>
+<p>Boroughs were grouped into low, medium, and high traffic categories to reduce geographic effects. Average street damage complaints rise with traffic: about 500 in low-traffic areas, 1,200 in medium-traffic, and 2,000 in high-traffic areas. This stepwise increase supports a direct link between vehicle volume and street damage.</p>
+<div class="cell" data-layout-align="center">
+<div class="cell-output-display">
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><img src="average_street_traffic.png" class="img-fluid quarto-figure quarto-figure-center figure-img" style="width:85.0%" alt="Bar chart showing a stepwise increase in average street-damage complaints from low-traffic areas (~500) to medium (~1,200) to high-traffic areas (~2,000)."></p>
+</figure>
+</div>
+</div>
+</div>
+</section>
+<section id="sq4-summary" class="level3">
+<h3 class="anchored" data-anchor-id="sq4-summary"><strong>4.3 SQ4 Summary</strong></h3>
+<p>These results indicate that traffic intensity is closely associated with infrastructure wear. Streets with higher traffic volumes experience more street-condition complaints, both across boroughs and within traffic-level categories. This connection shows that traffic patterns contribute not only to congestion but also to physical damage that directly affects residents’ daily lives and overall quality of life.</p>
+<hr>
+</section>
+</section>
+<section id="sq5-stability-of-traffic-and-complaint-relationships" class="level1">
+<h1><strong>SQ5: Stability of Traffic and Complaint Relationships</strong></h1>
+<p>This question examines <strong>whether the relationship between traffic volume and 311 complaints is stable over time in each borough and if short-term traffic spikes trigger temporary increases.</strong> Monthly traffic and complaint data for 2024 were aggregated by borough, with three-month rolling correlations and time-series regressions used to track changes and test spike effects. Some missing traffic data may affect stability.</p>
+<section id="borough-level-patterns-2" class="level3">
+<h3 class="anchored" data-anchor-id="borough-level-patterns-2"><strong>5.1 Borough-Level Patterns</strong></h3>
+<p>The Bronx shows the largest swings in correlation from +0.7 to –1.0, suggesting an episodic relationship. Manhattan remains mostly flat between –0.3 and +0.2, indicating complaints are driven by factors other than traffic. Brooklyn shows brief strong correlations, Queens shows moderate seasonal peaks, and Staten Island remains consistently low. Overall, no borough demonstrates a stable alignment between traffic volume and complaint frequency.</p>
+<div class="cell" data-layout-align="center">
+<div class="cell-output-display">
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><img src="correlation_borough.png" class="img-fluid quarto-figure quarto-figure-center figure-img" style="width:90.0%" alt="Five line charts showing correlation coefficients over time, with Staten Island showing strongest positive correlation and Manhattan weakest"></p>
+</figure>
+</div>
+</div>
+</div>
+</section>
+<section id="short-term-traffic-anomalies" class="level3">
+<h3 class="anchored" data-anchor-id="short-term-traffic-anomalies"><strong>5.2 Short-Term Traffic Anomalies</strong></h3>
+<p>To evaluate whether short-term traffic spikes lead to temporary increases in complaints, month-to-month changes in complaints were compared following spike months and normal months. Normal months display wide variation, while spike months do not show any upward trend, with lower medians and less dispersion. This indicates that short-term traffic anomalies do not reliably predict complaint surges.</p>
+<div class="cell" data-layout-align="center">
+<div class="cell-output-display">
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><img src="increase_complaints.png" class="img-fluid quarto-figure quarto-figure-center figure-img" style="width:90.0%" alt="Box plot showing distribution of monthly complaint changes following traffic spikes versus non-spike months"></p>
+</figure>
+</div>
+</div>
+</div>
+</section>
+<section id="sq5-summary" class="level3">
+<h3 class="anchored" data-anchor-id="sq5-summary"><strong>5.3 SQ5 Summary</strong></h3>
+<p>Both the visualizations and regression results suggest that the relationship between traffic and 311 complaints is episodic rather than structural. Short-term spikes in traffic do not consistently result in higher complaint volumes, and patterns vary considerably across boroughs. These findings should be interpreted with caution due to incomplete traffic data, but they highlight that traffic-related disruption is not a constant driver of resident complaints over time.</p>
+<hr>
+</section>
+</section>
+<section id="sq6-spatial-and-temporal-hotspots-of-traffic-complaints" class="level1">
+<h1><strong>SQ6: Spatial and Temporal Hotspots of Traffic Complaints</strong></h1>
+<p>This question examines <strong>the street-level spatial hotspots and hour/day temporal hotspots for traffic-related 311 complaints across New York City.</strong> The goal is to identify locations and times where traffic has the most impact on residents’ quality of life. Complaints included in the analysis are carefully selected to reflect traffic-related issues, such as vehicle noise, idling, and congestion.</p>
+<section id="complaint-counts-and-initial-observations" class="level3">
+<h3 class="anchored" data-anchor-id="complaint-counts-and-initial-observations"><strong>6.1 Complaint Counts and Initial Observations</strong></h3>
+<p>Looking at the raw numbers, it is not immediately obvious where traffic impacts are most severe. For example, Manhattan appears to have fewer complaints than other boroughs when considering totals alone. However, the first visualization shows that focusing on absolute numbers can be misleading.</p>
+<div class="cell">
+<div class="cell-output-display">
+<div>
+<figure class="figure">
+<p><img src="table_1.png" class="img-fluid figure-img" style="width:90.0%"></p>
+</figure>
+</div>
+</div>
+</div>
+</section>
+<section id="spatial-hotspots" class="level3">
+<h3 class="anchored" data-anchor-id="spatial-hotspots"><strong>6.2 Spatial Hotspots</strong></h3>
+<p>Mapping traffic-related complaints provides a clearer perspective on the issue. Although Manhattan appears to have fewer complaints by total numbers, it is heavily impacted in reality. The map below highlights intersections with the highest complaint densities.</p>
+<div class="cell" data-layout-align="center">
+<div class="cell-output-display">
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><img src="vehicle_complaints_map.png" class="img-fluid quarto-figure quarto-figure-center figure-img" style="width:90.0%"></p>
+</figure>
+</div>
+</div>
+</div>
+<p>To provide more detail, a table lists the names of these major intersections along with the number of complaints recorded at each location.</p>
+<div class="cell">
+<div class="cell-output-display">
+<div>
+<figure class="figure">
+<p><img src="table_2.png" class="img-fluid figure-img" style="width:90.0%"></p>
+</figure>
+</div>
+</div>
+</div>
+<p>These visualizations show that specific high-traffic intersections drive the majority of complaints, demonstrating that spatial concentration, rather than overall borough totals, better reflects residents’ experiences.</p>
+</section>
+<section id="temporal-patterns" class="level3">
+<h3 class="anchored" data-anchor-id="temporal-patterns"><strong>6.3 Temporal Patterns</strong></h3>
+<p>Complaint activity does not always match traffic volume. Vehicle noise may be tolerated in the morning but triggers complaints later when residents are more sensitive. Timing analysis shows complaints follow daily schedules, peaking when residents are most likely to notice disruptions, with late-day increases reflecting reports submitted after work about earlier issues.</p>
+<div class="cell" data-layout-align="center">
+<div class="cell-output-display">
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><img src="noise_Manhattan.png" class="img-fluid quarto-figure quarto-figure-center figure-img" style="width:90.0%"></p>
+</figure>
+</div>
+</div>
+</div>
+<div class="cell" data-layout-align="center">
+<div class="cell-output-display">
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><img src="all_Manhattan.png" class="img-fluid quarto-figure quarto-figure-center figure-img" style="width:90.0%"></p>
+</figure>
+</div>
+</div>
+</div>
+<p>These temporal visualizations demonstrate that complaint activity is influenced more by residents’ sensitivity and routines than by traffic volume alone.</p>
+</section>
+<section id="sq6-summary" class="level3">
+<h3 class="anchored" data-anchor-id="sq6-summary"><strong>6.4 SQ6 Summary</strong></h3>
+<p>Traffic-related 311 complaints in New York City show distinct spatial and temporal hotspots. Manhattan has concentrated complaints at major intersections due to dense pedestrian and vehicle activity. Complaints peak according to residents’ daily routines rather than traffic volume alone. These patterns show that traffic impacts vary across locations and times, highlighting areas where targeted interventions could most improve residents’ quality of life.</p>
+<hr>
+</section>
+</section>
+<section id="why-this-matters-and-whats-next" class="level1">
+<h1><strong>Why This Matters and What’s Next</strong></h1>
+<p>Traffic congestion in NYC affects noise, air quality, and overall quality of life, but most studies examine these issues separately. This project links traffic patterns with multiple types of 311 complaints across time and space, offering a more complete view of impacts.</p>
+<p><strong>Examples of Related Studies:</strong></p>
+<ul>
+<li>Street‑level noise in an urban setting: assessment and contribution to personal exposure — Tara P. McAlexander, Robyn R. M. Gershon, Richard L. Neitzel.</li>
+<li>Spatial variation in environmental noise and air pollution in New York City — Iyad Kheirbek, Kazuhiko Ito, Richard Neitzel, Jung Kim, Sarah Johnson, Zev Ross, Holger Eisl, Thomas Matte.</li>
+<li>The Improvement of the Air Quality due to Traffic Halting in Los Angeles and Potential Health Care Risk during the COVID‑19 Outbreak — Jiani Yang, Yuan Wang, Joseph Pinto, Le Kuai, King-Fai Li, Stanley P. Sander, Yuk L. Yung.</li>
+</ul>
+<p><strong>How we differ / Novelty:</strong></p>
+<ul>
+<li>Most prior research isolates a single factor (e.g., traffic → air quality or a single complaint type).</li>
+<li>Our study combines multiple 311 complaint categories, capturing a broader perspective on urban life in NYC.</li>
+<li>We use the most recent NYC traffic and 311 data (Year 2024) to provide an up-to-date view of patterns and trends.</li>
+</ul>
+<p>Findings can guide city agencies in enforcement, street planning, and service allocation. Future research could refine local baselines, expand hotspot analysis, and evaluate policy effects on complaint patterns over time.</p>
+<hr>
+</section>
+<section id="conclusion" class="level1">
+<h1><strong>Conclusion</strong></h1>
+<p>Traffic affects urban life in NYC across time, location, and complaint type. Citywide, peak traffic occurs in the late afternoon, while complaints peak earlier, and late-night traffic generates disproportionately higher complaints per vehicle. Borough- and neighborhood-level analyses show higher traffic does not always lead to more noise complaints; local conditions and reporting behavior are critical.</p>
+<p>High-traffic streets have more complaints about air quality, idling, and street conditions, concentrating burdens unevenly across ZIPs. Short-term spikes do not reliably increase complaints, indicating episodic disruption. Spatial and temporal hotspots pinpoint intersections and neighborhoods most affected, highlighting where interventions are most effective.</p>
+<p>Integration across SQs shows that traffic impacts are multifactorial. Linking multiple complaint categories with 2024 traffic data provides a more comprehensive and up-to-date view of urban disruption than prior research focusing on single factors. Findings can guide street design, service allocation, and enforcement to improve resident well-being.</p>
+
+
+</section>
+
+</main> <!-- /main -->
+<script id="quarto-html-after-body" type="application/javascript">
+  window.document.addEventListener("DOMContentLoaded", function (event) {
+    const icon = "";
+    const anchorJS = new window.AnchorJS();
+    anchorJS.options = {
+      placement: 'right',
+      icon: icon
+    };
+    anchorJS.add('.anchored');
+    const isCodeAnnotation = (el) => {
+      for (const clz of el.classList) {
+        if (clz.startsWith('code-annotation-')) {                     
+          return true;
+        }
+      }
+      return false;
+    }
+    const onCopySuccess = function(e) {
+      // button target
+      const button = e.trigger;
+      // don't keep focus
+      button.blur();
+      // flash "checked"
+      button.classList.add('code-copy-button-checked');
+      var currentTitle = button.getAttribute("title");
+      button.setAttribute("title", "Copied!");
+      let tooltip;
+      if (window.bootstrap) {
+        button.setAttribute("data-bs-toggle", "tooltip");
+        button.setAttribute("data-bs-placement", "left");
+        button.setAttribute("data-bs-title", "Copied!");
+        tooltip = new bootstrap.Tooltip(button, 
+          { trigger: "manual", 
+            customClass: "code-copy-button-tooltip",
+            offset: [0, -8]});
+        tooltip.show();    
+      }
+      setTimeout(function() {
+        if (tooltip) {
+          tooltip.hide();
+          button.removeAttribute("data-bs-title");
+          button.removeAttribute("data-bs-toggle");
+          button.removeAttribute("data-bs-placement");
+        }
+        button.setAttribute("title", currentTitle);
+        button.classList.remove('code-copy-button-checked');
+      }, 1000);
+      // clear code selection
+      e.clearSelection();
+    }
+    const getTextToCopy = function(trigger) {
+        const codeEl = trigger.previousElementSibling.cloneNode(true);
+        for (const childEl of codeEl.children) {
+          if (isCodeAnnotation(childEl)) {
+            childEl.remove();
+          }
+        }
+        return codeEl.innerText;
+    }
+    const clipboard = new window.ClipboardJS('.code-copy-button:not([data-in-quarto-modal])', {
+      text: getTextToCopy
+    });
+    clipboard.on('success', onCopySuccess);
+    if (window.document.getElementById('quarto-embedded-source-code-modal')) {
+      const clipboardModal = new window.ClipboardJS('.code-copy-button[data-in-quarto-modal]', {
+        text: getTextToCopy,
+        container: window.document.getElementById('quarto-embedded-source-code-modal')
+      });
+      clipboardModal.on('success', onCopySuccess);
+    }
+      var localhostRegex = new RegExp(/^(?:http|https):\/\/localhost\:?[0-9]*\//);
+      var mailtoRegex = new RegExp(/^mailto:/);
+        var filterRegex = new RegExp("https:\/\/xiuyinglan\.github\.io\/STA9750-2025-FALL\/");
+      var isInternal = (href) => {
+          return filterRegex.test(href) || localhostRegex.test(href) || mailtoRegex.test(href);
+      }
+      // Inspect non-navigation links and adorn them if external
+     var links = window.document.querySelectorAll('a[href]:not(.nav-link):not(.navbar-brand):not(.toc-action):not(.sidebar-link):not(.sidebar-item-toggle):not(.pagination-link):not(.no-external):not([aria-hidden]):not(.dropdown-item):not(.quarto-navigation-tool):not(.about-link)');
+      for (var i=0; i<links.length; i++) {
+        const link = links[i];
+        if (!isInternal(link.href)) {
+          // undo the damage that might have been done by quarto-nav.js in the case of
+          // links that we want to consider external
+          if (link.dataset.originalHref !== undefined) {
+            link.href = link.dataset.originalHref;
+          }
+        }
+      }
+    function tippyHover(el, contentFn, onTriggerFn, onUntriggerFn) {
+      const config = {
+        allowHTML: true,
+        maxWidth: 500,
+        delay: 100,
+        arrow: false,
+        appendTo: function(el) {
+            return el.parentElement;
+        },
+        interactive: true,
+        interactiveBorder: 10,
+        theme: 'quarto',
+        placement: 'bottom-start',
+      };
+      if (contentFn) {
+        config.content = contentFn;
+      }
+      if (onTriggerFn) {
+        config.onTrigger = onTriggerFn;
+      }
+      if (onUntriggerFn) {
+        config.onUntrigger = onUntriggerFn;
+      }
+      window.tippy(el, config); 
+    }
+    const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+    for (var i=0; i<noterefs.length; i++) {
+      const ref = noterefs[i];
+      tippyHover(ref, function() {
+        // use id or data attribute instead here
+        let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+        try { href = new URL(href).hash; } catch {}
+        const id = href.replace(/^#\/?/, "");
+        const note = window.document.getElementById(id);
+        if (note) {
+          return note.innerHTML;
+        } else {
+          return "";
+        }
+      });
+    }
+    const xrefs = window.document.querySelectorAll('a.quarto-xref');
+    const processXRef = (id, note) => {
+      // Strip column container classes
+      const stripColumnClz = (el) => {
+        el.classList.remove("page-full", "page-columns");
+        if (el.children) {
+          for (const child of el.children) {
+            stripColumnClz(child);
+          }
+        }
+      }
+      stripColumnClz(note)
+      if (id === null || id.startsWith('sec-')) {
+        // Special case sections, only their first couple elements
+        const container = document.createElement("div");
+        if (note.children && note.children.length > 2) {
+          container.appendChild(note.children[0].cloneNode(true));
+          for (let i = 1; i < note.children.length; i++) {
+            const child = note.children[i];
+            if (child.tagName === "P" && child.innerText === "") {
+              continue;
+            } else {
+              container.appendChild(child.cloneNode(true));
+              break;
+            }
+          }
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(container);
+          }
+          return container.innerHTML
+        } else {
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(note);
+          }
+          return note.innerHTML;
+        }
+      } else {
+        // Remove any anchor links if they are present
+        const anchorLink = note.querySelector('a.anchorjs-link');
+        if (anchorLink) {
+          anchorLink.remove();
+        }
+        if (window.Quarto?.typesetMath) {
+          window.Quarto.typesetMath(note);
+        }
+        if (note.classList.contains("callout")) {
+          return note.outerHTML;
+        } else {
+          return note.innerHTML;
+        }
+      }
+    }
+    for (var i=0; i<xrefs.length; i++) {
+      const xref = xrefs[i];
+      tippyHover(xref, undefined, function(instance) {
+        instance.disable();
+        let url = xref.getAttribute('href');
+        let hash = undefined; 
+        if (url.startsWith('#')) {
+          hash = url;
+        } else {
+          try { hash = new URL(url).hash; } catch {}
+        }
+        if (hash) {
+          const id = hash.replace(/^#\/?/, "");
+          const note = window.document.getElementById(id);
+          if (note !== null) {
+            try {
+              const html = processXRef(id, note.cloneNode(true));
+              instance.setContent(html);
+            } finally {
+              instance.enable();
+              instance.show();
+            }
+          } else {
+            // See if we can fetch this
+            fetch(url.split('#')[0])
+            .then(res => res.text())
+            .then(html => {
+              const parser = new DOMParser();
+              const htmlDoc = parser.parseFromString(html, "text/html");
+              const note = htmlDoc.getElementById(id);
+              if (note !== null) {
+                const html = processXRef(id, note);
+                instance.setContent(html);
+              } 
+            }).finally(() => {
+              instance.enable();
+              instance.show();
+            });
+          }
+        } else {
+          // See if we can fetch a full url (with no hash to target)
+          // This is a special case and we should probably do some content thinning / targeting
+          fetch(url)
+          .then(res => res.text())
+          .then(html => {
+            const parser = new DOMParser();
+            const htmlDoc = parser.parseFromString(html, "text/html");
+            const note = htmlDoc.querySelector('main.content');
+            if (note !== null) {
+              // This should only happen for chapter cross references
+              // (since there is no id in the URL)
+              // remove the first header
+              if (note.children.length > 0 && note.children[0].tagName === "HEADER") {
+                note.children[0].remove();
+              }
+              const html = processXRef(null, note);
+              instance.setContent(html);
+            } 
+          }).finally(() => {
+            instance.enable();
+            instance.show();
+          });
+        }
+      }, function(instance) {
+      });
+    }
+        let selectedAnnoteEl;
+        const selectorForAnnotation = ( cell, annotation) => {
+          let cellAttr = 'data-code-cell="' + cell + '"';
+          let lineAttr = 'data-code-annotation="' +  annotation + '"';
+          const selector = 'span[' + cellAttr + '][' + lineAttr + ']';
+          return selector;
+        }
+        const selectCodeLines = (annoteEl) => {
+          const doc = window.document;
+          const targetCell = annoteEl.getAttribute("data-target-cell");
+          const targetAnnotation = annoteEl.getAttribute("data-target-annotation");
+          const annoteSpan = window.document.querySelector(selectorForAnnotation(targetCell, targetAnnotation));
+          const lines = annoteSpan.getAttribute("data-code-lines").split(",");
+          const lineIds = lines.map((line) => {
+            return targetCell + "-" + line;
+          })
+          let top = null;
+          let height = null;
+          let parent = null;
+          if (lineIds.length > 0) {
+              //compute the position of the single el (top and bottom and make a div)
+              const el = window.document.getElementById(lineIds[0]);
+              top = el.offsetTop;
+              height = el.offsetHeight;
+              parent = el.parentElement.parentElement;
+            if (lineIds.length > 1) {
+              const lastEl = window.document.getElementById(lineIds[lineIds.length - 1]);
+              const bottom = lastEl.offsetTop + lastEl.offsetHeight;
+              height = bottom - top;
+            }
+            if (top !== null && height !== null && parent !== null) {
+              // cook up a div (if necessary) and position it 
+              let div = window.document.getElementById("code-annotation-line-highlight");
+              if (div === null) {
+                div = window.document.createElement("div");
+                div.setAttribute("id", "code-annotation-line-highlight");
+                div.style.position = 'absolute';
+                parent.appendChild(div);
+              }
+              div.style.top = top - 2 + "px";
+              div.style.height = height + 4 + "px";
+              div.style.left = 0;
+              let gutterDiv = window.document.getElementById("code-annotation-line-highlight-gutter");
+              if (gutterDiv === null) {
+                gutterDiv = window.document.createElement("div");
+                gutterDiv.setAttribute("id", "code-annotation-line-highlight-gutter");
+                gutterDiv.style.position = 'absolute';
+                const codeCell = window.document.getElementById(targetCell);
+                const gutter = codeCell.querySelector('.code-annotation-gutter');
+                gutter.appendChild(gutterDiv);
+              }
+              gutterDiv.style.top = top - 2 + "px";
+              gutterDiv.style.height = height + 4 + "px";
+            }
+            selectedAnnoteEl = annoteEl;
+          }
+        };
+        const unselectCodeLines = () => {
+          const elementsIds = ["code-annotation-line-highlight", "code-annotation-line-highlight-gutter"];
+          elementsIds.forEach((elId) => {
+            const div = window.document.getElementById(elId);
+            if (div) {
+              div.remove();
+            }
+          });
+          selectedAnnoteEl = undefined;
+        };
+          // Handle positioning of the toggle
+      window.addEventListener(
+        "resize",
+        throttle(() => {
+          elRect = undefined;
+          if (selectedAnnoteEl) {
+            selectCodeLines(selectedAnnoteEl);
+          }
+        }, 10)
+      );
+      function throttle(fn, ms) {
+      let throttle = false;
+      let timer;
+        return (...args) => {
+          if(!throttle) { // first call gets through
+              fn.apply(this, args);
+              throttle = true;
+          } else { // all the others get throttled
+              if(timer) clearTimeout(timer); // cancel #2
+              timer = setTimeout(() => {
+                fn.apply(this, args);
+                timer = throttle = false;
+              }, ms);
+          }
+        };
+      }
+        // Attach click handler to the DT
+        const annoteDls = window.document.querySelectorAll('dt[data-target-cell]');
+        for (const annoteDlNode of annoteDls) {
+          annoteDlNode.addEventListener('click', (event) => {
+            const clickedEl = event.target;
+            if (clickedEl !== selectedAnnoteEl) {
+              unselectCodeLines();
+              const activeEl = window.document.querySelector('dt[data-target-cell].code-annotation-active');
+              if (activeEl) {
+                activeEl.classList.remove('code-annotation-active');
+              }
+              selectCodeLines(clickedEl);
+              clickedEl.classList.add('code-annotation-active');
+            } else {
+              // Unselect the line
+              unselectCodeLines();
+              clickedEl.classList.remove('code-annotation-active');
+            }
+          });
+        }
+    const findCites = (el) => {
+      const parentEl = el.parentElement;
+      if (parentEl) {
+        const cites = parentEl.dataset.cites;
+        if (cites) {
+          return {
+            el,
+            cites: cites.split(' ')
+          };
+        } else {
+          return findCites(el.parentElement)
+        }
+      } else {
+        return undefined;
+      }
+    };
+    var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+    for (var i=0; i<bibliorefs.length; i++) {
+      const ref = bibliorefs[i];
+      const citeInfo = findCites(ref);
+      if (citeInfo) {
+        tippyHover(citeInfo.el, function() {
+          var popup = window.document.createElement('div');
+          citeInfo.cites.forEach(function(cite) {
+            var citeDiv = window.document.createElement('div');
+            citeDiv.classList.add('hanging-indent');
+            citeDiv.classList.add('csl-entry');
+            var biblioDiv = window.document.getElementById('ref-' + cite);
+            if (biblioDiv) {
+              citeDiv.innerHTML = biblioDiv.innerHTML;
+            }
+            popup.appendChild(citeDiv);
+          });
+          return popup.innerHTML;
+        });
+      }
+    }
+  });
+  </script>
+</div> <!-- /content -->
+
+
+
+
+</body></html>
