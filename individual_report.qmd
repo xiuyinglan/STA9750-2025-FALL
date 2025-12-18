@@ -595,16 +595,19 @@ combined_hourly <- complaints_hourly %>%
 Analyzing temporal patterns in traffic and 311 complaints helps clarify when traffic has the greatest impact on residents’ quality of life. Establishing this citywide temporal baseline is important for interpreting more detailed spatial analyses at the borough, neighborhood, and street levels. By examining patterns by hour of day and day of week, it becomes possible to identify periods of peak disruption and better understand how perceived impacts vary throughout the day and across the week.
 
 ### **4.1 Hourly Patterns**
-
 ```{r,echo=TRUE, message=FALSE, warning=FALSE}
 #| code-fold: true 
 
+#| label: interactive-traffic-volume
+#| echo: true
+#| warning: false
+#| message: false
 
-library(ggplot2)
+library(plotly)
 library(dplyr)
 library(lubridate)
 
-# Your calculation (likely correct for this data)
+# Calculate hourly statistics
 traffic_hourly <- traffic_time %>%
   group_by(hour) %>%
   summarise(
@@ -613,83 +616,191 @@ traffic_hourly <- traffic_time %>%
     median_volume = median(vol, na.rm = TRUE),
     sd_volume = sd(vol, na.rm = TRUE),
     se_volume = sd_volume / sqrt(n_measurements),
+    lower_ci = avg_volume - 1.96 * se_volume,
+    upper_ci = avg_volume + 1.96 * se_volume,
     .groups = "drop"
   )
 
-# Find highest and lowest points
-highest <- traffic_hourly %>% 
-  slice(which.max(avg_volume)) %>%
-  mutate(label = paste0("Peak: ", hour, ":00\n", round(avg_volume, 0)))
+# Identify extremes for highlighting
+traffic_hourly <- traffic_hourly %>%
+  mutate(
+    is_peak = avg_volume == max(avg_volume),
+    is_low = avg_volume == min(avg_volume),
+    point_color = case_when(
+      is_peak ~ "Peak",
+      is_low ~ "Low",
+      TRUE ~ "Normal"
+    ),
+    point_size = case_when(
+      is_peak | is_low ~ 8,
+      TRUE ~ 4
+    ),
+    hour_label = case_when(
+      hour == 0 ~ "12 AM",
+      hour < 12 ~ paste0(hour, " AM"),
+      hour == 12 ~ "12 PM",
+      TRUE ~ paste0(hour - 12, " PM")
+    ),
+    # Create informative hover text
+    hover_text = paste(
+      "<b>Hour:</b>", hour_label, "(", hour, ":00)", "<br>",
+      "<b>Avg Volume:</b>", format(round(avg_volume, 0), big.mark = ","), "vehicles<br>",
+      "<b>Measurements:</b>", format(n_measurements, big.mark = ","), "<br>",
+      "<b>95% CI:</b> [", format(round(lower_ci, 0), big.mark = ","), ", ",
+      format(round(upper_ci, 0), big.mark = ","), "]<br>",
+      "<b>Median:</b>", format(round(median_volume, 0), big.mark = ","), "vehicles",
+      ifelse(is_peak, "<br><b>PEAK HOUR</b>", ""),
+      ifelse(is_low, "<br><b>LOWEST HOUR</b>", "")
+    )
+  )
 
-lowest <- traffic_hourly %>% 
-  slice(which.min(avg_volume)) %>%
-  mutate(label = paste0("Low: ", hour, ":00\n", round(avg_volume, 0)))
+# Create the interactive plot
+fig <- plot_ly(traffic_hourly, x = ~hour)
 
-extremes <- bind_rows(highest, lowest)
+# Add confidence interval ribbon
+fig <- fig %>% add_ribbons(
+  ymin = ~lower_ci,
+  ymax = ~upper_ci,
+  line = list(color = 'transparent'),
+  fillcolor = 'rgba(70, 130, 180, 0.2)',
+  name = "95% Confidence Interval",
+  hoverinfo = "none",
+  showlegend = TRUE
+)
 
-# Create plot with your preferred line design
-ggplot(traffic_hourly, aes(x = hour, y = avg_volume)) +
-  # Confidence interval ribbon (your preferred style)
-  geom_ribbon(aes(ymin = avg_volume - 1.96 * se_volume, 
-                  ymax = avg_volume + 1.96 * se_volume),
-              fill = "steelblue", alpha = 0.2) +
-  # Main line (your preferred style)
-  geom_line(color = "steelblue", size = 1) +
-  # All points (your preferred style)
-  geom_point(color = "steelblue", size = 2) +
-  # Extreme points - colored differently
-  geom_point(data = extremes, 
-             aes(color = ifelse(avg_volume == max(avg_volume), "Peak", "Low")), 
-             size = 3.5) +
-  # Labels for extreme points with average counts
-  geom_text(data = extremes,
-            aes(label = label,
-                color = ifelse(avg_volume == max(avg_volume), "Peak", "Low")),
-            fontface = "bold",
-            size = 3.8,
-            vjust = ifelse(extremes$avg_volume == max(extremes$avg_volume), -1.2, 1.8),
-            hjust = 0.5,
-            show.legend = FALSE) +
-  # Custom color scale for extremes
-  scale_color_manual(values = c("Peak" = "darkred", "Low" = "darkgreen"),
-                     name = "Extreme Points") +
-  labs(
-    title = "Average Traffic Volume by Hour (2024)",
-    subtitle = paste("Peak:", highest$hour, ":00 | Low:", lowest$hour, ":00"),
-    x = "Hour of Day",
-    y = "Average Traffic Volume"
-  ) +
-  theme_minimal() +
-  theme(
-    plot.title = element_text(face = "bold", size = 14, hjust = 0.5),
-    plot.subtitle = element_text(size = 11, hjust = 0.5, margin = margin(b = 10)),
-    axis.title = element_text(face = "plain", size = 12),
-    legend.position = "top",
-    legend.title = element_text(size = 10),
-    legend.text = element_text(size = 9)
-  ) +
-  scale_x_continuous(
-    breaks = seq(0, 23, by = 3),
-    labels = function(x) {
-      case_when(
-        x == 0 ~ "12 AM",
-        x < 12 ~ paste0(x, " AM"),
-        x == 12 ~ "12 PM",
-        TRUE ~ paste0(x - 12, " PM")
-      )
-    }
-  ) +
-  scale_y_continuous(labels = scales::comma)
+# Add the main line
+fig <- fig %>% add_lines(
+  y = ~avg_volume,
+  line = list(color = 'steelblue', width = 3),
+  name = "Average Traffic Volume",
+  hoverinfo = "none",
+  showlegend = TRUE
+)
+
+# Add all points with conditional styling
+fig <- fig %>% add_markers(
+  y = ~avg_volume,
+  size = ~point_size,
+  color = ~point_color,
+  colors = c("Peak" = "darkred", "Low" = "darkgreen", "Normal" = "steelblue"),
+  marker = list(
+    line = list(
+      color = 'white',
+      width = 1
+    ),
+    opacity = 0.8,
+    sizemode = "diameter"
+  ),
+  text = ~hover_text,
+  hoverinfo = "text",
+  name = "Hourly Average",
+  showlegend = FALSE
+)
+
+# Customize layout
+fig <- fig %>% layout(
+  title = list(
+    text = "<b>Average Traffic Volume by Hour (2024)</b>",
+    x = 0.05,
+    font = list(size = 20)
+  ),
+  xaxis = list(
+    title = "<b>Hour of Day</b>",
+    tickmode = "array",
+    tickvals = seq(0, 23, 3),
+    ticktext = c("12 AM", "3 AM", "6 AM", "9 AM", "12 PM", "3 PM", "6 PM", "9 PM"),
+    gridcolor = 'rgba(128, 128, 128, 0.2)',
+    zerolinecolor = 'rgba(128, 128, 128, 0.5)'
+  ),
+  yaxis = list(
+    title = "<b>Average Traffic Volume</b>",
+    tickformat = ",",
+    gridcolor = 'rgba(128, 128, 128, 0.2)',
+    zerolinecolor = 'rgba(128, 128, 128, 0.5)'
+  ),
+  hovermode = "closest",
+  hoverlabel = list(
+    bgcolor = "white",
+    font = list(size = 12, color = "black"),
+    bordercolor = "steelblue"
+  ),
+  legend = list(
+    orientation = "h",
+    x = 0.5,
+    xanchor = "center",
+    y = 1.05,
+    yanchor = "bottom",
+    font = list(size = 12)
+  ),
+  margin = list(l = 60, r = 40, t = 80, b = 60),
+  plot_bgcolor = 'rgb(248, 248, 248)',
+  paper_bgcolor = 'rgb(248, 248, 248)',
+  annotations = list(
+    list(
+      x = traffic_hourly$hour[traffic_hourly$is_peak],
+      y = traffic_hourly$avg_volume[traffic_hourly$is_peak] * 1.05,
+      text = paste0("Peak: ", traffic_hourly$hour_label[traffic_hourly$is_peak]),
+      showarrow = TRUE,
+      arrowhead = 2,
+      arrowsize = 1,
+      arrowwidth = 1,
+      arrowcolor = "darkred",
+      font = list(size = 12, color = "darkred"),
+      bgcolor = "white",
+      bordercolor = "darkred",
+      borderwidth = 1,
+      borderpad = 4
+    ),
+    list(
+      x = traffic_hourly$hour[traffic_hourly$is_low],
+      y = traffic_hourly$avg_volume[traffic_hourly$is_low] * 0.95,
+      text = paste0("Low: ", traffic_hourly$hour_label[traffic_hourly$is_low]),
+      showarrow = TRUE,
+      arrowhead = 2,
+      arrowsize = 1,
+      arrowwidth = 1,
+      arrowcolor = "darkgreen",
+      font = list(size = 12, color = "darkgreen"),
+      bgcolor = "white",
+      bordercolor = "darkgreen",
+      borderwidth = 1,
+      borderpad = 4
+    )
+  )
+)
+
+# Add interactive features
+fig <- fig %>% config(
+  displayModeBar = TRUE,
+  modeBarButtonsToAdd = list(
+    "drawline",
+    "drawopenpath",
+    "drawcircle",
+    "drawrect",
+    "eraseshape"
+  ),
+  scrollZoom = TRUE,
+  displaylogo = FALSE
+)
+
+# Display the plot
+fig
 ```
+
+
 ```{r,echo=TRUE, message=FALSE, warning=FALSE}
 #| code-fold: true 
 
+#| label: interactive-complaints-volume
+#| echo: true
+#| warning: false
+#| message: false
 
-library(ggplot2)
+library(plotly)
 library(dplyr)
 library(lubridate)
 
-# Calculate average complaints per hour with confidence intervals
+# Calculate hourly statistics for 311 complaints
 complaints_hourly <- data_311_time %>%
   group_by(date, hour) %>%
   summarise(hourly_complaints = n(), .groups = "drop") %>%
@@ -700,80 +811,182 @@ complaints_hourly <- data_311_time %>%
     median_complaints = median(hourly_complaints, na.rm = TRUE),
     sd_complaints = sd(hourly_complaints, na.rm = TRUE),
     se_complaints = sd_complaints / sqrt(n_days),
+    lower_ci = avg_complaints - 1.96 * se_complaints,
+    upper_ci = avg_complaints + 1.96 * se_complaints,
     .groups = "drop"
   )
 
-# Find highest and lowest points
-highest <- complaints_hourly %>% 
-  slice(which.max(avg_complaints)) %>%
-  mutate(label = paste0("Peak: ", hour, ":00\n", round(avg_complaints, 0)))
+# Identify extremes for highlighting
+complaints_hourly <- complaints_hourly %>%
+  mutate(
+    is_peak = avg_complaints == max(avg_complaints),
+    is_low = avg_complaints == min(avg_complaints),
+    point_color = case_when(
+      is_peak ~ "Peak",
+      is_low ~ "Low",
+      TRUE ~ "Normal"
+    ),
+    point_size = case_when(
+      is_peak | is_low ~ 8,
+      TRUE ~ 4
+    ),
+    hour_label = case_when(
+      hour == 0 ~ "12 AM",
+      hour < 12 ~ paste0(hour, " AM"),
+      hour == 12 ~ "12 PM",
+      TRUE ~ paste0(hour - 12, " PM")
+    ),
+    # Create informative hover text for 311 complaints
+    hover_text = paste(
+      "<b>Hour:</b>", hour_label, "(", hour, ":00)", "<br>",
+      "<b>Avg Complaints:</b>", format(round(avg_complaints, 1), big.mark = ","), "per day<br>",
+      "<b>Days Measured:</b>", n_days, "<br>",
+      "<b>95% CI:</b> [", format(round(lower_ci, 1), big.mark = ","), ", ",
+      format(round(upper_ci, 1), big.mark = ","), "]<br>",
+      "<b>Median:</b>", format(round(median_complaints, 1), big.mark = ","), "complaints/day",
+      ifelse(is_peak, "<br><b>PEAK COMPLAINT HOUR</b>", ""),
+      ifelse(is_low, "<br><b>LOWEST COMPLAINT HOUR</b>", "")
+    )
+  )
 
-lowest <- complaints_hourly %>% 
-  slice(which.min(avg_complaints)) %>%
-  mutate(label = paste0("Low: ", hour, ":00\n", round(avg_complaints, 0)))
+# Create the interactive plot
+fig_complaints <- plot_ly(complaints_hourly, x = ~hour)
 
-extremes <- bind_rows(highest, lowest)
+# Add confidence interval ribbon
+fig_complaints <- fig_complaints %>% add_ribbons(
+  ymin = ~lower_ci,
+  ymax = ~upper_ci,
+  line = list(color = 'transparent'),
+  fillcolor = 'rgba(178, 34, 34, 0.2)',  # Different color from traffic plot
+  name = "95% Confidence Interval",
+  hoverinfo = "none",
+  showlegend = TRUE
+)
 
-# Create plot with EXACT same design as traffic plot
-ggplot(complaints_hourly, aes(x = hour, y = avg_complaints)) +
-  # Confidence interval ribbon (EXACT same as traffic)
-  geom_ribbon(aes(ymin = avg_complaints - 1.96 * se_complaints, 
-                  ymax = avg_complaints + 1.96 * se_complaints),
-              fill = "steelblue", alpha = 0.2) +
-  # Main line (EXACT same as traffic)
-  geom_line(color = "steelblue", size = 1) +
-  # All points (EXACT same as traffic)
-  geom_point(color = "steelblue", size = 2) +
-  # Extreme points - colored differently (EXACT same as traffic)
-  geom_point(data = extremes, 
-             aes(color = ifelse(avg_complaints == max(avg_complaints), "Peak", "Low")), 
-             size = 3.5) +
-  # Labels for extreme points with average counts (EXACT same as traffic)
-  geom_text(data = extremes,
-            aes(label = label,
-                color = ifelse(avg_complaints == max(avg_complaints), "Peak", "Low")),
-            fontface = "bold",
-            size = 3.8,
-            vjust = ifelse(extremes$avg_complaints == max(extremes$avg_complaints), -1.2, 1.8),
-            hjust = 0.5,
-            show.legend = FALSE) +
-  # Custom color scale for extremes (EXACT same as traffic)
-  scale_color_manual(values = c("Peak" = "darkred", "Low" = "darkgreen"),
-                     name = "Extreme Points") +
-  labs(
-    title = "Average 311 Complaints per Hour (2024)",
-    subtitle = paste("Peak:", highest$hour, ":00 | Low:", lowest$hour, ":00"),
-    x = "Hour of Day",
-    y = "Average Complaints per Day"
-  ) +
-  theme_minimal() +
-  theme(
-    plot.title = element_text(face = "bold", size = 14, hjust = 0.5),
-    plot.subtitle = element_text(size = 11, hjust = 0.5, margin = margin(b = 10)),
-    axis.title = element_text(face = "plain", size = 12),
-    legend.position = "top",
-    legend.title = element_text(size = 10),
-    legend.text = element_text(size = 9)
-  ) +
-  scale_x_continuous(
-    breaks = seq(0, 23, by = 3),
-    labels = function(x) {
-      case_when(
-        x == 0 ~ "12 AM",
-        x < 12 ~ paste0(x, " AM"),
-        x == 12 ~ "12 PM",
-        TRUE ~ paste0(x - 12, " PM")
-      )
-    }
-  ) +
-  scale_y_continuous(labels = scales::comma)
+# Add the main line
+fig_complaints <- fig_complaints %>% add_lines(
+  y = ~avg_complaints,
+  line = list(color = 'darkred', width = 3),  # Different color from traffic plot
+  name = "Average 311 Complaints",
+  hoverinfo = "none",
+  showlegend = TRUE
+)
+
+# Add all points with conditional styling
+fig_complaints <- fig_complaints %>% add_markers(
+  y = ~avg_complaints,
+  size = ~point_size,
+  color = ~point_color,
+  colors = c("Peak" = "darkblue", "Low" = "darkgreen", "Normal" = "darkred"),  # Different colors
+  marker = list(
+    line = list(
+      color = 'white',
+      width = 1
+    ),
+    opacity = 0.8,
+    sizemode = "diameter"
+  ),
+  text = ~hover_text,
+  hoverinfo = "text",
+  name = "Hourly Average",
+  showlegend = FALSE
+)
+
+# Customize layout (consistent with traffic plot)
+fig_complaints <- fig_complaints %>% layout(
+  title = list(
+    text = "<b>Average 311 Complaints per Hour (2024)</b>",  # Removed "Interactive"
+    x = 0.05,
+    font = list(size = 20)
+  ),
+  xaxis = list(
+    title = "<b>Hour of Day</b>",
+    tickmode = "array",
+    tickvals = seq(0, 23, 3),
+    ticktext = c("12 AM", "3 AM", "6 AM", "9 AM", "12 PM", "3 PM", "6 PM", "9 PM"),
+    gridcolor = 'rgba(128, 128, 128, 0.2)',
+    zerolinecolor = 'rgba(128, 128, 128, 0.5)'
+  ),
+  yaxis = list(
+    title = "<b>Average Complaints per Day</b>",
+    tickformat = ",",
+    gridcolor = 'rgba(128, 128, 128, 0.2)',
+    zerolinecolor = 'rgba(128, 128, 128, 0.5)'
+  ),
+  hovermode = "closest",
+  hoverlabel = list(
+    bgcolor = "white",
+    font = list(size = 12, color = "black"),
+    bordercolor = "darkred"  # Different from traffic plot
+  ),
+  legend = list(
+    orientation = "h",
+    x = 0.5,
+    xanchor = "center",
+    y = 1.05,
+    yanchor = "bottom",
+    font = list(size = 12)
+  ),
+  margin = list(l = 60, r = 40, t = 80, b = 60),
+  plot_bgcolor = 'rgb(248, 248, 248)',
+  paper_bgcolor = 'rgb(248, 248, 248)',
+  annotations = list(
+    list(
+      x = complaints_hourly$hour[complaints_hourly$is_peak],
+      y = complaints_hourly$avg_complaints[complaints_hourly$is_peak] * 1.05,
+      text = paste0("Peak: ", complaints_hourly$hour_label[complaints_hourly$is_peak]),
+      showarrow = TRUE,
+      arrowhead = 2,
+      arrowsize = 1,
+      arrowwidth = 1,
+      arrowcolor = "darkblue",
+      font = list(size = 12, color = "darkblue"),
+      bgcolor = "white",
+      bordercolor = "darkblue",
+      borderwidth = 1,
+      borderpad = 4
+    ),
+    list(
+      x = complaints_hourly$hour[complaints_hourly$is_low],
+      y = complaints_hourly$avg_complaints[complaints_hourly$is_low] * 0.95,
+      text = paste0("Low: ", complaints_hourly$hour_label[complaints_hourly$is_low]),
+      showarrow = TRUE,
+      arrowhead = 2,
+      arrowsize = 1,
+      arrowwidth = 1,
+      arrowcolor = "darkgreen",
+      font = list(size = 12, color = "darkgreen"),
+      bgcolor = "white",
+      bordercolor = "darkgreen",
+      borderwidth = 1,
+      borderpad = 4
+    )
+  )
+)
+
+# Add interactive features
+fig_complaints <- fig_complaints %>% config(
+  displayModeBar = TRUE,
+  modeBarButtonsToAdd = list(
+    "drawline",
+    "drawopenpath",
+    "drawcircle",
+    "drawrect",
+    "eraseshape"
+  ),
+  scrollZoom = TRUE,
+  displaylogo = FALSE
+)
+
+# Display the plot
+fig_complaints
 ```
+
 Hourly patterns reveal that traffic peaks between 3 and 5 PM, with an average of around 141 vehicles per hour, reflecting typical late afternoon commuting behavior. In contrast, 311 complaints peak earlier in the day between 9 and 11 AM, with an average of around 570 complaints, suggesting that complaint activity is not driven solely by traffic congestion. Visualizing these patterns with a line plot highlights the mismatch between traffic volume and complaints, indicating that residents’ perceptions of disruption depend on factors beyond raw traffic volume.
 
 
 
 ### **4.2 Day-of-Week Patterns**
-
 ```{r,echo=TRUE, message=FALSE, warning=FALSE}
 #| code-fold: true 
 
@@ -890,6 +1103,7 @@ combined_hourly <- complaints_hourly %>%
     )
   )
 ```
+
 
 ```{r,echo=TRUE, message=FALSE, warning=FALSE}
 #| code-fold: true 
@@ -1013,80 +1227,192 @@ Complaint intensity stays relatively high from 2 AM to 3 AM but drops quickly as
 
 
 #### III. Hourly Complaint Intensity Relative to Traffic Volume
-```{r,echo=TRUE, message=FALSE, warning=FALSE}
-#| code-fold: true 
 
-#| label: ratio-visualization
-#| fig-height: 6
-#| fig-width: 10
+```{r}
+#| code-fold: true
+#| label: final-clean-interactive
+#| fig-height: 6.5
+#| fig-width: 11
 
-# First, calculate the ratios needed
-# Calculate late_night average ratio
-late_night_ratio <- combined_hourly %>%
-  filter(time_of_day == "late_night") %>%
-  summarise(avg = mean(complaints_per_traffic, na.rm = TRUE)) %>%
-  pull(avg)
+library(plotly)
+library(dplyr)
 
-# Calculate daytime average ratio (non-late-night)
-daytime_ratio <- combined_hourly %>%
-  filter(time_of_day != "late_night") %>%
-  summarise(avg = mean(complaints_per_traffic, na.rm = TRUE)) %>%
-  pull(avg)
-
-# Calculate ratio difference
-ratio_difference <- late_night_ratio / daytime_ratio
-
-# Create the plot WITHOUT bar labels
-ggplot(combined_hourly, aes(x = hour, y = complaints_per_traffic)) +
-  geom_col(aes(fill = time_of_day), width = 0.8) +
-  
-  # Add the overall average red line
-  geom_hline(yintercept = mean(combined_hourly$complaints_per_traffic, na.rm = TRUE), 
-             color = "red", linetype = "dashed", size = 1) +
-  
-  # Clean color scheme
-  scale_fill_manual(
-    values = c(
-      "late_night" = "#4A6FA5",      # Dark blue for late night
-      "morning_peak" = "#FFA726",    # Orange for morning peak
-      "evening_peak" = "#FF7043",    # Deep orange for evening peak
-      "off_peak" = "#81C784"         # Green for off-peak
-    ),
-    name = "Time Period:"
-  ) +
-  
-  # Adjust y-axis to show the full range properly
-  scale_y_continuous(
-    limits = c(0, max(combined_hourly$complaints_per_traffic) * 1.1),
-    breaks = seq(0, 7000, by = 1000),  # Adjusted based on your max ~6125
-    labels = scales::comma_format()  # Format with commas for thousands
-  ) +
-  
-  labs(
-    title = "Complaint Intensity Relative to Traffic Volume by Hour",
-    subtitle = paste("Late-night complaints per vehicle are", round(ratio_difference, 2), 
-                    "times higher than daytime average\nRed line = overall average ratio"),
-    x = "Hour of Day",
-    y = "Complaints per 1000 Vehicles",
-    caption = "Data: NYC 311 & DOT Traffic Counts, 2024"
-  ) +
-  
-  theme_minimal(base_size = 13) +
-  theme(
-    plot.title = element_text(face = "bold", size = 16),
-    plot.subtitle = element_text(color = "gray40", size = 11),
-    legend.position = "top",
-    plot.caption = element_text(color = "gray50", size = 9),
-    panel.grid.minor = element_blank()
-  ) +
-  
-  scale_x_continuous(
-    breaks = seq(0, 23, by = 3),
-    labels = function(x) paste0(x, ":00")
+# Prepare data
+plot_data <- combined_hourly %>%
+  mutate(
+    bar_color = case_when(
+      time_of_day == "late_night" ~ "#4A6FA5",      # Dark blue
+      time_of_day == "morning_peak" ~ "#FFA726",    # Orange
+      time_of_day == "evening_peak" ~ "#FF7043",    # Deep orange
+      time_of_day == "off_peak" ~ "#81C784"         # Green
+    )
   )
+
+# Calculate statistics
+overall_avg <- mean(plot_data$complaints_per_traffic, na.rm = TRUE)
+late_night_avg <- mean(plot_data$complaints_per_traffic[plot_data$time_of_day == "late_night"], na.rm = TRUE)
+daytime_avg <- mean(plot_data$complaints_per_traffic[plot_data$time_of_day != "late_night"], na.rm = TRUE)
+ratio_multiplier <- round(late_night_avg / daytime_avg, 2)
+
+# Create clean interactive plot
+fig <- plot_ly(plot_data, x = ~hour)
+
+# Add bars - NO words inside, completely clean
+fig <- fig %>% add_bars(
+  y = ~complaints_per_traffic,
+  marker = list(
+    color = ~bar_color,
+    line = list(color = "white", width = 1.5)
+  ),
+  hoverinfo = "text",
+  text = ~paste(
+    "<b>", sprintf("%02d:00", hour), "</b><br>",
+    "Complaints per 1000 vehicles: <b>", round(complaints_per_traffic, 2), "</b><br>",
+    "Avg complaints: ", round(avg_complaints, 1), "/hr<br>",
+    "Avg traffic: ", format(round(avg_traffic), big.mark = ","), "/hr"
+  ),
+  hovertemplate = "%{text}<extra></extra>",
+  name = "",
+  showlegend = FALSE
+)
+
+# Add overall average line with label
+fig <- fig %>% add_lines(
+  x = c(-0.5, 23.5),  # Extend slightly beyond plot edges
+  y = c(overall_avg, overall_avg),
+  line = list(color = "red", dash = "dash", width = 2.5),
+  hoverinfo = "text",
+  text = paste("Overall Average: ", round(overall_avg, 2)),
+  hovertemplate = "%{text}<extra></extra>",
+  name = "Overall Average",
+  showlegend = FALSE
+)
+
+# Add label for the red average line
+fig <- fig %>% add_annotations(
+  x = 23.2,  # Right side of plot
+  y = overall_avg,
+  text = "<span style='color:red; font-size:11px;'>--- Average</span>",
+  showarrow = FALSE,
+  xref = "x",
+  yref = "y",
+  xanchor = "right",
+  bgcolor = "white",
+  bordercolor = "rgba(255,255,255,0)",
+  borderwidth = 0
+)
+
+# Custom layout
+fig <- fig %>% layout(
+  title = list(
+    text = paste(
+      "<b>Complaints per 1000 Vehicles by Hour</b><br>",
+      "<span style='font-size: 12px; color: #666; font-weight: normal;'>",
+      "Late-night complaints per vehicle are ", ratio_multiplier, 
+      "× higher than daytime average</span>"
+    ),
+    x = 0,
+    font = list(size = 16),
+    xanchor = "left"
+  ),
+  xaxis = list(
+    title = "<b>Hour of Day</b>",
+    tickmode = "array",
+    tickvals = seq(0, 23, 3),
+    ticktext = paste0(seq(0, 23, 3), ":00"),
+    gridcolor = 'rgba(200, 200, 200, 0.3)',
+    zeroline = FALSE,
+    showline = TRUE,
+    linecolor = 'rgba(180, 180, 180, 0.8)',
+    linewidth = 1,
+    mirror = TRUE,
+    range = c(-0.5, 23.5)  # Extend slightly for average line label
+  ),
+  yaxis = list(
+    title = "<b>Complaints per 1000 Vehicles</b>",
+    gridcolor = 'rgba(200, 200, 200, 0.2)',
+    zeroline = TRUE,
+    zerolinecolor = 'rgba(200, 200, 200, 0.5)',
+    zerolinewidth = 1,
+    showline = TRUE,
+    linecolor = 'rgba(180, 180, 180, 0.8)',
+    linewidth = 1,
+    mirror = TRUE
+  ),
+  hovermode = "x unified",
+  hoverlabel = list(
+    bgcolor = "white",
+    font = list(size = 11, family = "Arial"),
+    bordercolor = "#ccc",
+    borderwidth = 1
+  ),
+  margin = list(l = 65, r = 40, t = 90, b = 65),
+  plot_bgcolor = 'white',
+  paper_bgcolor = 'white',
+  showlegend = FALSE
+)
+
+# Add time period labels ABOVE the plot (all in same position)
+fig <- fig %>% layout(
+  annotations = list(
+    # Late Night label
+    list(
+      x = 1.5,  # Center of late night period
+      y = 1.02,  # Above the plot
+      xref = "x",
+      yref = "paper",
+      text = "<b style='color:#4A6FA5; font-size:11px;'>LATE NIGHT</b>",
+      showarrow = FALSE,
+      font = list(size = 11, family = "Arial"),
+      xanchor = "center"
+    ),
+    # Morning Peak label
+    list(
+      x = 7.5,  # Center of morning peak
+      y = 1.02,  # Same vertical position
+      xref = "x",
+      yref = "paper",
+      text = "<b style='color:#FFA726; font-size:11px;'>MORNING PEAK</b>",
+      showarrow = FALSE,
+      font = list(size = 11, family = "Arial"),
+      xanchor = "center"
+    ),
+    # Off-Peak label
+    list(
+      x = 13,  # Center of off-peak hours
+      y = 1.02,  # Same vertical position
+      xref = "x",
+      yref = "paper",
+      text = "<b style='color:#81C784; font-size:11px;'>OFF-PEAK</b>",
+      showarrow = FALSE,
+      font = list(size = 11, family = "Arial"),
+      xanchor = "center"
+    ),
+    # Evening Peak label
+    list(
+      x = 17.5,  # Center of evening peak
+      y = 1.02,  # Same vertical position
+      xref = "x",
+      yref = "paper",
+      text = "<b style='color:#FF7043; font-size:11px;'>EVENING PEAK</b>",
+      showarrow = FALSE,
+      font = list(size = 11, family = "Arial"),
+      xanchor = "center"
+    )
+  )
+)
+
+# Interactive configuration
+fig <- fig %>% config(
+  displayModeBar = TRUE,
+  modeBarButtonsToRemove = list("lasso2d", "select2d"),
+  displaylogo = FALSE
+)
+
+# Display the plot
+fig
 ```
-  
-  
+
 
 The visualization supports the idea that late night traffic is linked to a much higher level of resident complaints compared to daytime hours. The graph shows a clear spike in complaint intensity during overnight hours, especially at midnight and 1:00 AM, where complaints exceed 6,100 per 1,000 vehicles. These values are well above the overall average line shown in red. Even though traffic volume is low during these hours, as seen in earlier traffic patterns, the complaint to traffic ratio is at its highest, pointing to increased resident sensitivity.
 
